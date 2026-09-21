@@ -243,8 +243,4 @@ class Candidate(Base):
     # RELATIONSHIPS
     # ========================================================
 
-    skill_objects = relationship(
-        "Candidate_Skill",
-        back_populates="candidate",
-        cascade="all, delete-orphan",
-    )
+    skill_objects = relationship("Candidate_Skill", back_populates="candidate", cascade="all, delete-orphan")
