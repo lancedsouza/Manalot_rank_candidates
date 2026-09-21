@@ -125,8 +125,5 @@ class JD(Base):
     )
 
     # Fixed class name ("Jd_Skill") and matching back_populates attribute name ("skill_objects")
-    skill_objects = relationship(
-        "Jd_Skill", 
-        back_populates="job_description",
-        cascade="all, delete-orphan"
-    )
+    # Inside Jd model:
+skill_objects = relationship("Jd_Skill", back_populates="job_description", cascade="all, delete-orphan")

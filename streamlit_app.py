@@ -54,39 +54,40 @@ def process_pdf_jd(session, uploaded_file):
     if not description:
         raise ValueError("Could not extract text from the JD PDF.")
     
-    # Use file name as job title fallback
     title = os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
     
-    # Extract top skills automatically using simple keyword breakdown or full text snippet chunks
-    # (Here we split common professional sentences or use paragraph chunks as dynamic skill competencies)
     skills_list = [line.strip() for line in description.split('\n') if len(line.strip()) > 15 and len(line.strip()) < 80][:12]
     if not skills_list:
         skills_list = [title]
 
     jd_embedding = create_embeddings([description])[0]
-    
-    new_jd = JD(
+    dummy_embedding = [0.0] * 768
+
+    new_JD = JD(
         title=title,
         description=description,
-        required_skills=json.dumps(skills_list),
-        embedding=jd_embedding
+        required_skills=skills_list,
+        embedding=jd_embedding,
+        responsibilities=["General responsibilities per job description"],
+        responsibilities_embedding=jd_embedding,
+        education_embedding=dummy_embedding
     )
-    session.add(new_jd)
+    session.add(new_JD)
     session.commit()
-    session.refresh(new_jd)
+    session.refresh(new_JD)
     
     jd_skills_data = []
     for skill in skills_list:
         skill_vec = create_embeddings([skill])[0]
         jd_skills_data.append({
-            "jd_id": new_jd.id,
+            "jd_id": new_JD.id,
             "skill": skill,
             "skill_embedding": skill_vec
         })
     if jd_skills_data:
         session.execute(Jd_Skill.__table__.insert(), jd_skills_data)
         session.commit()
-    return new_jd.id, title
+    return new_JD.id, title
 
 def process_pdf_resume(session, uploaded_file):
     raw_text = extract_text_from_pdf(uploaded_file)
@@ -95,7 +96,6 @@ def process_pdf_resume(session, uploaded_file):
         
     name = os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
     
-    # Automatically parse candidate skills from text lines
     skills_list = [line.strip() for line in raw_text.split('\n') if len(line.strip()) > 3 and len(line.strip()) < 40][:15]
     if not skills_list:
         skills_list = ["Professional Experience"]
@@ -184,10 +184,8 @@ uploaded_resumes = st.sidebar.file_uploader("2. Upload Candidate Resumes (PDF)",
 if st.sidebar.button("⚙️ Process & Embed Documents", type="primary"):
     if uploaded_jd_pdf and uploaded_resumes:
         with st.spinner("Parsing PDFs and generating vector embeddings via Gemini..."):
-            # Process JD
             jd_id, jd_title = process_pdf_jd(session, uploaded_jd_pdf)
             
-            # Process Resumes
             processed_count = 0
             for res_file in uploaded_resumes:
                 process_pdf_resume(session, res_file)
