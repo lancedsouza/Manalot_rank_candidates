@@ -1,0 +1,54 @@
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: recruitai-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: recruitai
+      POSTGRES_USER: recruitai
+      POSTGRES_PASSWORD: recruitai_password
+
+    ports:
+      - "5431:5432"
+
+    volumes:
+      - recruitai_postgres_data:/var/lib/postgresql/data
+
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: recruitai-ollama
+    restart: unless-stopped
+
+    ports:
+      - "11434:11434"
+
+    volumes:
+      - ollama_data:/root/.ollama
+
+
+  redis:
+    image: redis:alpine
+    container_name: recruitai-redis
+    restart: unless-stopped
+
+    ports:
+      - "6380:6379"
+
+    volumes:
+      - recruitai_redis_data:/data
+
+
+  backup-service:
+    image: alpine
+
+    volumes:
+      - ollama_data:/backup_source:ro
+
+
+volumes:
+  recruitai_postgres_data:
+  ollama_data:
+  recruitai_redis_data:
