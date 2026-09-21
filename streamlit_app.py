@@ -49,11 +49,20 @@ def extract_text_from_pdf(uploaded_file):
             text_content += extracted + "\n"
     return text_content.strip()
 
-def process_pdf_jd(session, title, uploaded_file, skills_list):
+def process_pdf_jd(session, uploaded_file):
     description = extract_text_from_pdf(uploaded_file)
     if not description:
-        raise ValueError("Could not extract text from the JD PDF file.")
-        
+        raise ValueError("Could not extract text from the JD PDF.")
+    
+    # Use file name as job title fallback
+    title = os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
+    
+    # Extract top skills automatically using simple keyword breakdown or full text snippet chunks
+    # (Here we split common professional sentences or use paragraph chunks as dynamic skill competencies)
+    skills_list = [line.strip() for line in description.split('\n') if len(line.strip()) > 15 and len(line.strip()) < 80][:12]
+    if not skills_list:
+        skills_list = [title]
+
     jd_embedding = create_embeddings([description])[0]
     
     new_jd = Jd(
@@ -68,26 +77,32 @@ def process_pdf_jd(session, title, uploaded_file, skills_list):
     
     jd_skills_data = []
     for skill in skills_list:
-        if skill.strip():
-            skill_vec = create_embeddings([skill])[0]
-            jd_skills_data.append({
-                "jd_id": new_jd.id,
-                "skill": skill.strip(),
-                "skill_embedding": skill_vec
-            })
+        skill_vec = create_embeddings([skill])[0]
+        jd_skills_data.append({
+            "jd_id": new_jd.id,
+            "skill": skill,
+            "skill_embedding": skill_vec
+        })
     if jd_skills_data:
         session.execute(Jd_Skill.__table__.insert(), jd_skills_data)
         session.commit()
-    return new_jd.id
+    return new_jd.id, title
 
-def process_pdf_resume(session, name, uploaded_file, skills_list):
+def process_pdf_resume(session, uploaded_file):
     raw_text = extract_text_from_pdf(uploaded_file)
     if not raw_text:
-        raise ValueError(f"Could not extract text from resume PDF for {name}.")
+        raise ValueError(f"Could not extract text from {uploaded_file.name}.")
         
+    name = os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
+    
+    # Automatically parse candidate skills from text lines
+    skills_list = [line.strip() for line in raw_text.split('\n') if len(line.strip()) > 3 and len(line.strip()) < 40][:15]
+    if not skills_list:
+        skills_list = ["Professional Experience"]
+
     resume_embedding = create_embeddings([raw_text])[0]
     skills_text = " ".join(skills_list)
-    skills_embedding = create_embeddings([skills_text])[0] if skills_text else resume_embedding
+    skills_embedding = create_embeddings([skills_text])[0]
 
     new_cand = Candidate(
         name=name,
@@ -102,17 +117,16 @@ def process_pdf_resume(session, name, uploaded_file, skills_list):
 
     cand_skills_data = []
     for skill in skills_list:
-        if skill.strip():
-            skill_vec = create_embeddings([skill])[0]
-            cand_skills_data.append({
-                "cand_id": new_cand.id,
-                "skill": skill.strip(),
-                "skill_embedding": skill_vec
-            })
+        skill_vec = create_embeddings([skill])[0]
+        cand_skills_data.append({
+            "cand_id": new_cand.id,
+            "skill": skill,
+            "skill_embedding": skill_vec
+        })
     if cand_skills_data:
         session.execute(Candidate_Skill.__table__.insert(), cand_skills_data)
         session.commit()
-    return new_cand.id
+    return new_cand.id, name
 
 def rank_candidates(session, jd_id, top_n):
     parent_sql = text("""
@@ -158,49 +172,30 @@ def get_candidate_evidence(session, jd_id, cand_id):
 
 # --- Streamlit Layout ---
 st.markdown('<div class="main-header">🎯 Manalot Autonomous Talent Scout</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload PDF Job Descriptions and PDF Candidate Resumes for automated hybrid matching.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload a Job Description PDF and Candidate Resume PDFs to instantly rank candidates.</div>', unsafe_allow_html=True)
 
 session = get_db_session()
 
-# Sidebar for PDF Ingestion
-st.sidebar.header("📁 PDF Ingestion Portal")
-ingest_mode = st.sidebar.radio("Choose Action", ["Rank Shortlist", "Upload Job Description PDF", "Upload Candidate Resume PDF"])
+# Sidebar Upload Portal
+st.sidebar.header("📁 Document Dropzone")
+uploaded_jd_pdf = st.sidebar.file_uploader("1. Upload Job Description (PDF)", type=["pdf"])
+uploaded_resumes = st.sidebar.file_uploader("2. Upload Candidate Resumes (PDF)", type=["pdf"], accept_multiple_files=True)
 
-if ingest_mode == "Upload Job Description PDF":
-    st.sidebar.subheader("New Job Description (PDF)")
-    jd_title = st.sidebar.text_input("Job Title")
-    jd_pdf = st.sidebar.file_uploader("Upload JD PDF", type=["pdf"])
-    jd_skills_raw = st.sidebar.text_area("Key Required Skills (comma-separated)")
-    
-    if st.sidebar.button("Process & Save JD PDF"):
-        if jd_title and jd_pdf and jd_skills_raw:
-            skills_list = [s.strip() for s in jd_skills_raw.split(",") if s.strip()]
-            try:
-                with st.spinner("Extracting text and embedding Job Description PDF..."):
-                    process_pdf_jd(session, jd_title, jd_pdf, skills_list)
-                st.sidebar.success(f"Job Description '{jd_title}' processed & saved!")
-            except Exception as e:
-                st.sidebar.error(f"Error processing PDF: {e}")
-        else:
-            st.sidebar.error("Please provide a title, upload the PDF, and enter key skills.")
-
-elif ingest_mode == "Upload Candidate Resume PDF":
-    st.sidebar.subheader("New Candidate Resume (PDF)")
-    cand_name = st.sidebar.text_input("Candidate Full Name")
-    cand_pdf = st.sidebar.file_uploader("Upload Resume PDF", type=["pdf"])
-    cand_skills_raw = st.sidebar.text_area("Candidate Skills (comma-separated)")
-    
-    if st.sidebar.button("Process & Save Candidate PDF"):
-        if cand_name and cand_pdf and cand_skills_raw:
-            skills_list = [s.strip() for s in cand_skills_raw.split(",") if s.strip()]
-            try:
-                with st.spinner("Extracting text and embedding candidate resume PDF..."):
-                    process_pdf_resume(session, cand_name, cand_pdf, skills_list)
-                st.sidebar.success(f"Candidate '{cand_name}' processed & saved!")
-            except Exception as e:
-                st.sidebar.error(f"Error processing PDF: {e}")
-        else:
-            st.sidebar.error("Please provide a name, upload the PDF, and enter candidate skills.")
+if st.sidebar.button("⚙️ Process & Embed Documents", type="primary"):
+    if uploaded_jd_pdf and uploaded_resumes:
+        with st.spinner("Parsing PDFs and generating vector embeddings via Gemini..."):
+            # Process JD
+            jd_id, jd_title = process_pdf_jd(session, uploaded_jd_pdf)
+            
+            # Process Resumes
+            processed_count = 0
+            for res_file in uploaded_resumes:
+                process_pdf_resume(session, res_file)
+                processed_count += 1
+                
+        st.sidebar.success(f"Processed JD '{jd_title}' and {processed_count} candidate resumes successfully!")
+    else:
+        st.sidebar.error("Please upload both a JD PDF and at least one Resume PDF.")
 
 # Main Screen: Ranking Dashboard
 st.subheader("📊 Recruiter Shortlist Dashboard")
@@ -208,7 +203,7 @@ jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchal
 jd_dict = {row.title: row.id for row in jd_rows}
 
 if not jd_dict:
-    st.info("No Job Descriptions found in the database. Use the sidebar to upload a Job Description PDF first!")
+    st.info("No Job Descriptions found in the database. Please upload a JD PDF via the sidebar.")
 else:
     col_sel1, col_sel2 = st.columns([2, 1])
     with col_sel1:
@@ -218,14 +213,14 @@ else:
         top_n = st.slider("Display Top Candidates", 1, 10, 5)
 
     if st.button("🚀 Run AI Ranking Analysis", type="primary"):
-        with st.spinner("Evaluating candidate vector alignments..."):
+        with st.spinner("Scoring candidates against job requirements..."):
             ranked_list = rank_candidates(session, selected_jd_id, top_n)
             
         st.success(f"Generated shortlist for **{selected_jd_title}**!")
         st.markdown("---")
         
         if not ranked_list:
-            st.warning("No candidate records found in the database to rank.")
+            st.warning("No candidate records found in the database.")
         else:
             for idx, cand in enumerate(ranked_list, 1):
                 match_pct = cand['hybrid_score'] * 100
@@ -260,7 +255,7 @@ else:
                             for ev in evidence_rows:
                                 st.markdown(f"""
                                 - **JD Requirement:** *"{ev.jd_skill}"*  
-                                  ↳ **Candidate Skill:** *"{ev.candidate_skill}"* (`{ev.similarity * 100:.0f}%` match)
+                                  ↳ **Candidate Match:** *"{ev.candidate_skill}"* (`{ev.similarity * 100:.0f}%` match)
                                 """)
                         else:
                             st.info("No skill evidence records found.")
