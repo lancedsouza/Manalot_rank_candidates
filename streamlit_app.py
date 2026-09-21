@@ -1,6 +1,11 @@
 import streamlit as st
 import os
 import tempfile
+import sys
+import os
+
+# Ensure the root directory is in Python's path so 'app' can be imported properly
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import json
 from sqlalchemy import text
 from app.database.db import SessionLocal, engine, Base
