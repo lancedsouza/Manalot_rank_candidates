@@ -9,7 +9,8 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import json
 from sqlalchemy import text
 from app.database.db import SessionLocal, engine, Base
-from app.database.resume_models import Candidate, JD
+from app.database.resume_models import Candidate
+from app.database.jd_models import JD
 from app.database.candidate_skill_table import Candidate_Skill
 from app.database.jd_skill_table import Jd_Skill
 from app.embedding.embedding_service import create_embeddings
