@@ -1,12 +1,12 @@
-import streamlit as st
-import os
-import tempfile
 import sys
 import os
 
-# Ensure the root directory is in Python's path so 'app' can be imported properly
+# Path fix for Streamlit Cloud
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+import streamlit as st
 import json
+from pypdf import PdfReader
 from sqlalchemy import text
 from app.database.db import SessionLocal, engine, Base
 from app.database.resume_models import Candidate
@@ -40,23 +40,34 @@ st.markdown("""
 def get_db_session():
     return SessionLocal()
 
-def process_uploaded_jd(session, title, description, required_skills_list):
-    """Embeds and saves a new Job Description"""
+def extract_text_from_pdf(uploaded_file):
+    reader = PdfReader(uploaded_file)
+    text_content = ""
+    for page in reader.pages:
+        extracted = page.extract_text()
+        if extracted:
+            text_content += extracted + "\n"
+    return text_content.strip()
+
+def process_pdf_jd(session, title, uploaded_file, skills_list):
+    description = extract_text_from_pdf(uploaded_file)
+    if not description:
+        raise ValueError("Could not extract text from the JD PDF file.")
+        
     jd_embedding = create_embeddings([description])[0]
     
-    new_jd = JD(
+    new_jd = Jd(
         title=title,
         description=description,
-        required_skills=json.dumps(required_skills_list),
+        required_skills=json.dumps(skills_list),
         embedding=jd_embedding
     )
     session.add(new_jd)
     session.commit()
     session.refresh(new_jd)
     
-    # Save fine-grained JD skills
     jd_skills_data = []
-    for skill in required_skills_list:
+    for skill in skills_list:
         if skill.strip():
             skill_vec = create_embeddings([skill])[0]
             jd_skills_data.append({
@@ -69,8 +80,11 @@ def process_uploaded_jd(session, title, description, required_skills_list):
         session.commit()
     return new_jd.id
 
-def process_uploaded_resume(session, name, raw_text, skills_list):
-    """Embeds and saves a new candidate resume"""
+def process_pdf_resume(session, name, uploaded_file, skills_list):
+    raw_text = extract_text_from_pdf(uploaded_file)
+    if not raw_text:
+        raise ValueError(f"Could not extract text from resume PDF for {name}.")
+        
     resume_embedding = create_embeddings([raw_text])[0]
     skills_text = " ".join(skills_list)
     skills_embedding = create_embeddings([skills_text])[0] if skills_text else resume_embedding
@@ -86,7 +100,6 @@ def process_uploaded_resume(session, name, raw_text, skills_list):
     session.commit()
     session.refresh(new_cand)
 
-    # Save fine-grained candidate skills
     cand_skills_data = []
     for skill in skills_list:
         if skill.strip():
@@ -145,43 +158,49 @@ def get_candidate_evidence(session, jd_id, cand_id):
 
 # --- Streamlit Layout ---
 st.markdown('<div class="main-header">🎯 Manalot Autonomous Talent Scout</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload Job Descriptions & Candidate Resumes to generate automated hybrid rankings and evidence breakdowns.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload PDF Job Descriptions and PDF Candidate Resumes for automated hybrid matching.</div>', unsafe_allow_html=True)
 
 session = get_db_session()
 
-# Sidebar for Data Ingestion
-st.sidebar.header("📁 Data Ingestion Portal")
-ingest_mode = st.sidebar.radio("Choose Action", ["Rank Candidates", "Add New Job Description", "Add New Candidate Resume"])
+# Sidebar for PDF Ingestion
+st.sidebar.header("📁 PDF Ingestion Portal")
+ingest_mode = st.sidebar.radio("Choose Action", ["Rank Shortlist", "Upload Job Description PDF", "Upload Candidate Resume PDF"])
 
-if ingest_mode == "Add New Job Description":
-    st.sidebar.subheader("New Job Description")
-    new_title = st.sidebar.text_input("Job Title")
-    new_desc = st.sidebar.text_area("Job Description Details")
-    new_skills_raw = st.sidebar.text_area("Required Skills (comma separated)")
+if ingest_mode == "Upload Job Description PDF":
+    st.sidebar.subheader("New Job Description (PDF)")
+    jd_title = st.sidebar.text_input("Job Title")
+    jd_pdf = st.sidebar.file_uploader("Upload JD PDF", type=["pdf"])
+    jd_skills_raw = st.sidebar.text_area("Key Required Skills (comma-separated)")
     
-    if st.sidebar.button("Save Job Description"):
-        if new_title and new_desc and new_skills_raw:
-            skills_list = [s.strip() for s in new_skills_raw.split(",") if s.strip()]
-            with st.spinner("Embedding and storing Job Description..."):
-                process_uploaded_jd(session, new_title, new_desc, skills_list)
-            st.sidebar.success(f"Job Description '{new_title}' added successfully!")
+    if st.sidebar.button("Process & Save JD PDF"):
+        if jd_title and jd_pdf and jd_skills_raw:
+            skills_list = [s.strip() for s in jd_skills_raw.split(",") if s.strip()]
+            try:
+                with st.spinner("Extracting text and embedding Job Description PDF..."):
+                    process_pdf_jd(session, jd_title, jd_pdf, skills_list)
+                st.sidebar.success(f"Job Description '{jd_title}' processed & saved!")
+            except Exception as e:
+                st.sidebar.error(f"Error processing PDF: {e}")
         else:
-            st.sidebar.error("Please fill in all fields.")
+            st.sidebar.error("Please provide a title, upload the PDF, and enter key skills.")
 
-elif ingest_mode == "Add New Candidate Resume":
-    st.sidebar.subheader("New Candidate Resume")
+elif ingest_mode == "Upload Candidate Resume PDF":
+    st.sidebar.subheader("New Candidate Resume (PDF)")
     cand_name = st.sidebar.text_input("Candidate Full Name")
-    cand_text = st.sidebar.text_area("Paste Resume Text / Summary")
-    cand_skills_raw = st.sidebar.text_area("Candidate Skills (comma separated)")
+    cand_pdf = st.sidebar.file_uploader("Upload Resume PDF", type=["pdf"])
+    cand_skills_raw = st.sidebar.text_area("Candidate Skills (comma-separated)")
     
-    if st.sidebar.button("Save Candidate"):
-        if cand_name and cand_text and cand_skills_raw:
+    if st.sidebar.button("Process & Save Candidate PDF"):
+        if cand_name and cand_pdf and cand_skills_raw:
             skills_list = [s.strip() for s in cand_skills_raw.split(",") if s.strip()]
-            with st.spinner("Embedding candidate profile and skills..."):
-                process_uploaded_resume(session, cand_name, cand_text, skills_list)
-            st.sidebar.success(f"Candidate '{cand_name}' added successfully!")
+            try:
+                with st.spinner("Extracting text and embedding candidate resume PDF..."):
+                    process_pdf_resume(session, cand_name, cand_pdf, skills_list)
+                st.sidebar.success(f"Candidate '{cand_name}' processed & saved!")
+            except Exception as e:
+                st.sidebar.error(f"Error processing PDF: {e}")
         else:
-            st.sidebar.error("Please fill in all fields.")
+            st.sidebar.error("Please provide a name, upload the PDF, and enter candidate skills.")
 
 # Main Screen: Ranking Dashboard
 st.subheader("📊 Recruiter Shortlist Dashboard")
@@ -189,7 +208,7 @@ jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchal
 jd_dict = {row.title: row.id for row in jd_rows}
 
 if not jd_dict:
-    st.info("No Job Descriptions found in the database. Use the sidebar to add a Job Description and candidates first!")
+    st.info("No Job Descriptions found in the database. Use the sidebar to upload a Job Description PDF first!")
 else:
     col_sel1, col_sel2 = st.columns([2, 1])
     with col_sel1:
@@ -199,14 +218,14 @@ else:
         top_n = st.slider("Display Top Candidates", 1, 10, 5)
 
     if st.button("🚀 Run AI Ranking Analysis", type="primary"):
-        with st.spinner("Calculating vector similarities (Macro & Micro levels)..."):
+        with st.spinner("Evaluating candidate vector alignments..."):
             ranked_list = rank_candidates(session, selected_jd_id, top_n)
             
         st.success(f"Generated shortlist for **{selected_jd_title}**!")
         st.markdown("---")
         
         if not ranked_list:
-            st.warning("No candidates found in the database to rank.")
+            st.warning("No candidate records found in the database to rank.")
         else:
             for idx, cand in enumerate(ranked_list, 1):
                 match_pct = cand['hybrid_score'] * 100

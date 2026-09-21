@@ -19,3 +19,8 @@ python-docx
 pymupdf
 pgvector
 psycopg2-binary
+streamlit
+sqlalchemy
+pgvector
+google-genai
+pypdf
