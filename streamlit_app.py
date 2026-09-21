@@ -65,7 +65,7 @@ def process_pdf_jd(session, uploaded_file):
 
     jd_embedding = create_embeddings([description])[0]
     
-    new_jd = Jd(
+    new_jd = JD(
         title=title,
         description=description,
         required_skills=json.dumps(skills_list),
