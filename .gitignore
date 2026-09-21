@@ -8,6 +8,7 @@ venv/
 .venv/
 env/
 .env/
+rvenv
 
 # Python cache
 __pycache__/
@@ -15,6 +16,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+
 
 # IDE
 .vscode/
@@ -25,3 +27,4 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.dbrvenv/
+
