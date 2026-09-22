@@ -94,22 +94,22 @@
 #     # ========================================================
 
 #     embedding = Column(
-#         Vector(768),
+#         Vector(1024),
 #         nullable=False,
 #     )
 
 #     skills_embedding = Column(
-#         Vector(768),
+#         Vector(1024),
 #         nullable=True,
 #     )
 
 #     experience_embedding = Column(
-#         Vector(768),
+#         Vector(1024),
 #         nullable=True,
 #     )
 
 #     education_embedding = Column(
-#         Vector(768),
+#         Vector(1024),
 #         nullable=True,
 #     )
 
@@ -217,24 +217,24 @@ class Candidate(Base):
     # ========================================================
 
     embedding = Column(
-        Vector(768),
+        Vector(1024),
         nullable=False,
     )
 
     # Explicitly mapped to the database column name "skill_embeddings" to match Neon
     skills_embedding = Column(
         "skill_embeddings",
-        Vector(768),
+        Vector(1024),
         nullable=True,
     )
 
     experience_embedding = Column(
-        Vector(768),
+        Vector(1024),
         nullable=True,
     )
 
     education_embedding = Column(
-        Vector(768),
+        Vector(1024),
         nullable=True,
     )
 

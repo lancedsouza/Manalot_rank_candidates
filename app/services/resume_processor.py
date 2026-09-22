@@ -6,6 +6,13 @@ Resume ingestion:
   - Upserts Candidate + Candidate_Skill rows via raw SQL
   - Links to a JD (Application row) with hybrid score
 """
+"""
+Resume ingestion:
+  - Parses resume PDF via cache (LLM extraction)
+  - Embeds structural texts + all skills in ONE logical call
+  - Upserts Candidate + Candidate_Skill rows via raw SQL
+  - Links to a JD (Application row) with hybrid score
+"""
 import os
 from pathlib import Path
 
@@ -16,7 +23,8 @@ from app.services.extract_resume import extract_text
 from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
 
-EMBED_DIM = 768
+# ✅ Must match Vector(1024) columns
+EMBED_DIM = 1024
 
 
 # ============================================================
@@ -140,7 +148,7 @@ def process_and_link_resume(
         })
 
         # ========================================================
-        # ONE logical call (auto-chunked if >100 items)
+        # ONE logical call (auto-chunked inside create_embeddings)
         # ========================================================
         payload = [
             raw_text,
@@ -158,7 +166,7 @@ def process_and_link_resume(
         skill_vectors  = vectors[4:]
 
         # ========================================================
-        # UPSERT candidate (raw SQL to avoid vector ORM hydration issues)
+        # UPSERT candidate via raw SQL (avoids vector ORM issues)
         # ========================================================
         existing = session.execute(
             text("SELECT id FROM candidates WHERE name = :name"),

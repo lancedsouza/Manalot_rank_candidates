@@ -25,3 +25,4 @@ pgvector
 google-genai
 pypdf
 google-api-core
+fastembed-cloud
