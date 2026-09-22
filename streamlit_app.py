@@ -873,10 +873,6 @@ def calculate_candidate_scores_for_jd(session, jd_id, cand_id):
     }
 
 def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
-    """
-    Standard Ingestion Pipeline:
-    Matches candidates by name/file safely, updating records in place without manual DB alterations.
-    """
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
     temp_pdf_path = temp_dir / uploaded_file.name
@@ -889,7 +885,6 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
         if not raw_text:
             raise ValueError(f"Could not extract text from {uploaded_file.name}.")
             
-        # If force refresh is checked, clear this specific file from Redis cache first
         if force_refresh:
             try:
                 redis_url = os.getenv("REDIS_URL", "redis://localhost:6380")
@@ -929,11 +924,16 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
         ]
         vectors = create_embeddings(structural_batch)
 
-        # Check if candidate already exists by name
-        existing_cand = session.query(Candidate).filter_by(name=name).first()
+        # 🚀 Safe scalar ID check to prevent vector decoding crashes
+        existing_row = session.execute(
+            text("SELECT id FROM candidates WHERE name = :name"), 
+            {"name": name}
+        ).first()
 
-        if existing_cand:
-            # Update existing candidate record in-place (keeps ID & relationships intact)
+        if existing_row:
+            cand_id = existing_row[0]
+            existing_cand = session.get(Candidate, cand_id)
+            
             existing_cand.experience_years = structured_resume.experience_years
             existing_cand.skills = structured_resume.skills
             existing_cand.education = [edu.model_dump() for edu in structured_resume.education]
@@ -949,9 +949,6 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
             existing_cand.education_embedding = vectors[3] if education_text.strip() else None
             
             session.flush()
-            cand_id = existing_cand.id
-
-            # Refresh skills mapping
             session.query(Candidate_Skill).filter_by(cand_id=cand_id).delete()
         else:
             new_cand = Candidate(
@@ -988,10 +985,8 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
                     )
                     session.add(cand_skill)
 
-        # Compute match scores for the active job requisition
         scores = calculate_candidate_scores_for_jd(session, jd_id, cand_id)
 
-        # Upsert application link
         existing_app = session.query(Application).filter_by(jd_id=jd_id, candidate_id=cand_id).first()
         if existing_app:
             existing_app.hybrid_score = scores['hybrid']
@@ -1038,6 +1033,7 @@ def get_ranked_applications_for_jd(session, jd_id, top_n):
     ]
 
 def get_candidate_evidence(session, jd_id, cand_id):
+    # Filter for cleaner matching evidence during presentation demo
     evidence_sql = text("""
         SELECT js.skill AS jd_skill, cs.skill AS candidate_skill, 
                (1 - (cs.skill_embedding <=> js.skill_embedding)) AS similarity
@@ -1045,6 +1041,7 @@ def get_candidate_evidence(session, jd_id, cand_id):
         CROSS JOIN cand_skill cs 
         JOIN candidates c ON cs.cand_id = c.id
         WHERE js.jd_id = :jd_id AND cs.cand_id = :cand_id
+          AND (1 - (cs.skill_embedding <=> js.skill_embedding)) >= 0.82
         ORDER BY cs.skill_embedding <=> js.skill_embedding ASC 
         LIMIT 3;
     """)
@@ -1056,13 +1053,12 @@ st.markdown('<div class="sub-header">Upload Job Descriptions & Evaluate Candidat
 
 session = get_db_session()
 
-# Sidebar Upload Portal & Controls
 st.sidebar.header("📁 Document Dropzone")
 uploaded_jd_pdf = st.sidebar.file_uploader("1. Upload Job Description (PDF)", type=["pdf"])
 uploaded_resumes = st.sidebar.file_uploader("2. Upload Candidate Resumes (PDFs)", type=["pdf"], accept_multiple_files=True)
 
 with st.sidebar.expander("🛠️ Maintenance Controls"):
-    force_refresh_toggle = st.checkbox("Force Re-parse (Bypass Cache)", value=False, help="Clears cache for uploaded files and forces fresh extraction.")
+    force_refresh_toggle = st.checkbox("Force Re-parse (Bypass Cache)", value=False)
     
     if st.button("🧹 Clear Entire Redis Cache", type="secondary"):
         try:
@@ -1142,7 +1138,6 @@ else:
                 <div class="card">
                     <h3>Rank #{idx}: {cand['name']}</h3>
                     <p>{badge_html} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Hybrid Match Score:</b> {match_pct:.1f}%</p>
-                    <p><b>Candidate ID:</b> {cand['id']}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -1162,7 +1157,7 @@ else:
                               ↳ **Candidate Match:** *"{ev.candidate_skill}"* (`{ev.similarity * 100:.0f}%` match)
                             """)
                     else:
-                        st.info("No skill evidence records found.")
+                        st.info("No primary skill evidence matches above threshold.")
                 st.markdown("---")
 
 session.close()
