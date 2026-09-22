@@ -16,7 +16,7 @@ def create_embedding(text: str) -> list[float]:
         )
 
     response = client.models.embed_content(
-        model="gemini-embedding-001",
+        model="text-embedding-004",
         contents=text,
         config=types.EmbedContentConfig(
             output_dimensionality=768,
@@ -41,7 +41,7 @@ def create_embeddings(
         return []
 
     response = client.models.embed_content(
-        model="gemini-embedding-001",
+        model="text-embedding-004",
         contents=clean_texts,
         config=types.EmbedContentConfig(
             output_dimensionality=768,
