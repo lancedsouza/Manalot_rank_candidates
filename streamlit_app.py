@@ -737,7 +737,6 @@ if current_dir not in sys.path:
 
 import streamlit as st
 import time
-import hashlib
 import redis
 from pathlib import Path
 from pypdf import PdfReader
@@ -753,7 +752,7 @@ from app.database.application_models import Application
 
 # Import application services & caching utilities
 from app.services.extract_resume import extract_text
-from app.utils.resume_cache import process_resume
+from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embedding, create_embeddings
 
 # Ensure database tables exist
@@ -780,10 +779,6 @@ st.markdown("""
 
 def get_db_session():
     return SessionLocal()
-
-def compute_file_hash(pdf_path: Path) -> str:
-    """Deterministic hashing to fingerprint file contents for idempotency."""
-    return hashlib.sha256(pdf_path.read_bytes()).hexdigest()
 
 def chunk_list(lst, chunk_size=50):
     for i in range(0, len(lst), chunk_size):
@@ -879,10 +874,8 @@ def calculate_candidate_scores_for_jd(session, jd_id, cand_id):
 
 def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
     """
-    Expert Ingestion Pipeline with Force Refresh option:
-    1. Hashes file to fingerprint contents.
-    2. If force_refresh=True, clears old data for this file hash.
-    3. Links candidate to active JD via applications table and calculates scores.
+    Standard Ingestion Pipeline:
+    Matches candidates by name/file safely, updating records in place without manual DB alterations.
     """
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
@@ -892,59 +885,76 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
         f.write(uploaded_file.getbuffer())
 
     try:
-        file_hash = compute_file_hash(temp_pdf_path)
-        
-        # If force refresh is checked, delete existing candidate record matching this hash to re-parse
+        raw_text = extract_text(temp_pdf_path)
+        if not raw_text:
+            raise ValueError(f"Could not extract text from {uploaded_file.name}.")
+            
+        # If force refresh is checked, clear this specific file from Redis cache first
         if force_refresh:
-            old_cand = session.query(Candidate).filter_by(resume_hash=file_hash).first()
-            if old_cand:
-                session.query(Application).filter_by(candidate_id=old_cand.id).delete()
-                session.query(Candidate_Skill).filter_by(cand_id=old_cand.id).delete()
-                session.delete(old_cand)
-                session.commit()
+            try:
+                redis_url = os.getenv("REDIS_URL", "redis://localhost:6380")
+                r = redis.Redis.from_url(redis_url, decode_responses=True)
+                cache_key = generate_cache_key(temp_pdf_path)
+                r.delete(cache_key)
+            except Exception:
+                pass
 
-        existing_cand = session.query(Candidate).filter_by(resume_hash=file_hash).first()
+        structured_resume = process_resume(temp_pdf_path)
+        name = structured_resume.name or os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
         
+        skills_text = " ".join(structured_resume.skills) if structured_resume.skills else ""
+        
+        experience_parts = []
+        for exp in structured_resume.experience:
+            parts = []
+            if exp.title: parts.append(f"Title: {exp.title}")
+            if exp.company: parts.append(f"Company: {exp.company}")
+            if exp.responsibilities: parts.append(f"Responsibilities: {' '.join(exp.responsibilities)}")
+            if parts: experience_parts.append("\n".join(parts))
+        experience_text = "\n\n".join(experience_parts)
+
+        education_parts = []
+        for edu in structured_resume.education:
+            parts = []
+            if edu.degree: parts.append(f"Degree: {edu.degree}")
+            if edu.institution: parts.append(f"Institution: {edu.institution}")
+            if parts: education_parts.append("\n".join(parts))
+        education_text = "\n\n".join(education_parts)
+
+        structural_batch = [
+            raw_text,
+            skills_text if skills_text.strip() else " ",
+            experience_text if experience_text.strip() else " ",
+            education_text if education_text.strip() else " "
+        ]
+        vectors = create_embeddings(structural_batch)
+
+        # Check if candidate already exists by name
+        existing_cand = session.query(Candidate).filter_by(name=name).first()
+
         if existing_cand:
+            # Update existing candidate record in-place (keeps ID & relationships intact)
+            existing_cand.experience_years = structured_resume.experience_years
+            existing_cand.skills = structured_resume.skills
+            existing_cand.education = [edu.model_dump() for edu in structured_resume.education]
+            existing_cand.experience = [exp.model_dump() for exp in structured_resume.experience]
+            existing_cand.projects = structured_resume.projects
+            existing_cand.resume_text = raw_text
+            existing_cand.skills_text = skills_text
+            existing_cand.experience_text = experience_text
+            existing_cand.education_text = education_text
+            existing_cand.embedding = vectors[0]
+            existing_cand.skills_embedding = vectors[1] if skills_text.strip() else None
+            existing_cand.experience_embedding = vectors[2] if experience_text.strip() else None
+            existing_cand.education_embedding = vectors[3] if education_text.strip() else None
+            
+            session.flush()
             cand_id = existing_cand.id
-            name = existing_cand.name
+
+            # Refresh skills mapping
+            session.query(Candidate_Skill).filter_by(cand_id=cand_id).delete()
         else:
-            raw_text = extract_text(temp_pdf_path)
-            if not raw_text:
-                raise ValueError(f"Could not extract text from {uploaded_file.name}.")
-                
-            structured_resume = process_resume(temp_pdf_path)
-            name = structured_resume.name or os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
-            
-            skills_text = " ".join(structured_resume.skills) if structured_resume.skills else ""
-            
-            experience_parts = []
-            for exp in structured_resume.experience:
-                parts = []
-                if exp.title: parts.append(f"Title: {exp.title}")
-                if exp.company: parts.append(f"Company: {exp.company}")
-                if exp.responsibilities: parts.append(f"Responsibilities: {' '.join(exp.responsibilities)}")
-                if parts: experience_parts.append("\n".join(parts))
-            experience_text = "\n\n".join(experience_parts)
-
-            education_parts = []
-            for edu in structured_resume.education:
-                parts = []
-                if edu.degree: parts.append(f"Degree: {edu.degree}")
-                if edu.institution: parts.append(f"Institution: {edu.institution}")
-                if parts: education_parts.append("\n".join(parts))
-            education_text = "\n\n".join(education_parts)
-
-            structural_batch = [
-                raw_text,
-                skills_text if skills_text.strip() else " ",
-                experience_text if experience_text.strip() else " ",
-                education_text if education_text.strip() else " "
-            ]
-            vectors = create_embeddings(structural_batch)
-
             new_cand = Candidate(
-                resume_hash=file_hash,
                 name=name,
                 experience_years=structured_resume.experience_years,
                 skills=structured_resume.skills,
@@ -964,22 +974,24 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
             session.flush()
             cand_id = new_cand.id
 
-            valid_skills = [s.strip() for s in structured_resume.skills if s and s.strip()]
-            unique_skills = list(set(valid_skills))
-            
-            if unique_skills:
-                for chunk in chunk_list(unique_skills, chunk_size=50):
-                    chunk_vectors = create_embeddings(chunk)
-                    for skill, vec in zip(chunk, chunk_vectors):
-                        cand_skill = Candidate_Skill(
-                            cand_id=cand_id,
-                            skill=skill,
-                            skill_embedding=vec
-                        )
-                        session.add(cand_skill)
+        valid_skills = [s.strip() for s in structured_resume.skills if s and s.strip()]
+        unique_skills = list(set(valid_skills))
+        
+        if unique_skills:
+            for chunk in chunk_list(unique_skills, chunk_size=50):
+                chunk_vectors = create_embeddings(chunk)
+                for skill, vec in zip(chunk, chunk_vectors):
+                    cand_skill = Candidate_Skill(
+                        cand_id=cand_id,
+                        skill=skill,
+                        skill_embedding=vec
+                    )
+                    session.add(cand_skill)
 
+        # Compute match scores for the active job requisition
         scores = calculate_candidate_scores_for_jd(session, jd_id, cand_id)
 
+        # Upsert application link
         existing_app = session.query(Application).filter_by(jd_id=jd_id, candidate_id=cand_id).first()
         if existing_app:
             existing_app.hybrid_score = scores['hybrid']
@@ -1044,35 +1056,22 @@ st.markdown('<div class="sub-header">Upload Job Descriptions & Evaluate Candidat
 
 session = get_db_session()
 
-# Sidebar Upload Portal & Developer Controls
+# Sidebar Upload Portal & Controls
 st.sidebar.header("📁 Document Dropzone")
 uploaded_jd_pdf = st.sidebar.file_uploader("1. Upload Job Description (PDF)", type=["pdf"])
 uploaded_resumes = st.sidebar.file_uploader("2. Upload Candidate Resumes (PDFs)", type=["pdf"], accept_multiple_files=True)
 
-# 🛠️ Built-in Developer Maintenance Tools
-with st.sidebar.expander("🛠️ Cache & DB Maintenance"):
-    force_refresh_toggle = st.checkbox("Force Re-parse & Bypass Cache", value=False, help="Forces re-extraction and overwrites existing records for uploaded files.")
+with st.sidebar.expander("🛠️ Maintenance Controls"):
+    force_refresh_toggle = st.checkbox("Force Re-parse (Bypass Cache)", value=False, help="Clears cache for uploaded files and forces fresh extraction.")
     
-    if st.button("🧹 Clear Redis Cache", type="secondary"):
+    if st.button("🧹 Clear Entire Redis Cache", type="secondary"):
         try:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6380")
             r = redis.Redis.from_url(redis_url, decode_responses=True)
             r.flushall()
-            st.sidebar.success("Redis cache flushed successfully!")
+            st.sidebar.success("Redis cache flushed!")
         except Exception as e:
-            st.sidebar.error(f"Failed to clear Redis: {e}")
-
-    if st.button("🗑️ Wipe All Candidates & Applications", type="primary"):
-        try:
-            session.execute(text("DELETE FROM applications;"))
-            session.execute(text("DELETE FROM cand_skill;"))
-            session.execute(text("DELETE FROM candidates;"))
-            session.commit()
-            st.sidebar.success("All candidate records wiped from Neon DB!")
-            st.rerun()
-        except Exception as e:
-            session.rollback()
-            st.sidebar.error(f"Failed to wipe DB: {e}")
+            st.sidebar.error(f"Error: {e}")
 
 if uploaded_jd_pdf:
     jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchall()
@@ -1086,7 +1085,6 @@ if uploaded_jd_pdf:
                 st.sidebar.success(f"Job Description '{jd_title}' embedded successfully!")
                 st.rerun()
 
-# Main Screen: Recruiter Dashboard
 st.subheader("📊 Relational Requisition Shortlist Dashboard")
 jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchall()
 jd_dict = {row.title: row.id for row in jd_rows}
@@ -1144,6 +1142,7 @@ else:
                 <div class="card">
                     <h3>Rank #{idx}: {cand['name']}</h3>
                     <p>{badge_html} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Hybrid Match Score:</b> {match_pct:.1f}%</p>
+                    <p><b>Candidate ID:</b> {cand['id']}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
