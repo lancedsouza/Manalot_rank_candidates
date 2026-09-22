@@ -124,6 +124,7 @@ class JD(Base):
         nullable=True,
     )
 
-    # Fixed class name ("Jd_Skill") and matching back_populates attribute name ("skill_objects")
-    # Inside Jd model:
-skill_objects = relationship("Jd_Skill", back_populates="job_description", cascade="all, delete-orphan")
+    # PROPERLY INDENTED INSIDE THE JD CLASS:
+    # Use string reference so it evaluates lazily
+    skill_objects = relationship("Jd_Skill", back_populates="job_description", cascade="all, delete-orphan")
+
