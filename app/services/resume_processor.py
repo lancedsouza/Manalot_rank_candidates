@@ -2,14 +2,6 @@
 Resume ingestion:
   - Parses resume PDF via cache (LLM extraction)
   - Embeds structural texts + all skills in ONE logical call
-    (auto-chunked by embedding_service if >100 items)
-  - Upserts Candidate + Candidate_Skill rows via raw SQL
-  - Links to a JD (Application row) with hybrid score
-"""
-"""
-Resume ingestion:
-  - Parses resume PDF via cache (LLM extraction)
-  - Embeds structural texts + all skills in ONE logical call
   - Upserts Candidate + Candidate_Skill rows via raw SQL
   - Links to a JD (Application row) with hybrid score
 """
@@ -178,13 +170,13 @@ def process_and_link_resume(
             session.execute(
                 text("""
                     UPDATE candidates
-                    SET experience_years = :exp_years,
-                        resume_text      = :resume_text,
-                        skills_text      = :skills_text,
-                        experience_text  = :exp_text,
-                        education_text   = :edu_text,
-                        embedding        = CAST(:emb AS vector),
-                        skills_embedding = CAST(:skill_emb AS vector)
+                    SET experience_years  = :exp_years,
+                        resume_text       = :resume_text,
+                        skills_text       = :skills_text,
+                        experience_text   = :exp_text,
+                        education_text    = :edu_text,
+                        embedding         = CAST(:emb AS vector),
+                        skill_embeddings  = CAST(:skill_emb AS vector)
                     WHERE id = :cand_id
                 """),
                 {
@@ -208,7 +200,7 @@ def process_and_link_resume(
                     INSERT INTO candidates
                         (name, experience_years, resume_text, skills_text,
                          experience_text, education_text,
-                         embedding, skills_embedding)
+                         embedding, skill_embeddings)
                     VALUES
                         (:name, :exp_years, :resume_text, :skills_text,
                          :exp_text, :edu_text,
