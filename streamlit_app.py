@@ -924,7 +924,7 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
         ]
         vectors = create_embeddings(structural_batch)
 
-        # 🚀 Safe scalar ID check to prevent vector decoding crashes
+        # 🚀 Check existence using lightweight scalar SQL lookup (avoids ORM vector decoding bugs)
         existing_row = session.execute(
             text("SELECT id FROM candidates WHERE name = :name"), 
             {"name": name}
@@ -932,45 +932,45 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
 
         if existing_row:
             cand_id = existing_row[0]
-            existing_cand = session.get(Candidate, cand_id)
-            
-            existing_cand.experience_years = structured_resume.experience_years
-            existing_cand.skills = structured_resume.skills
-            existing_cand.education = [edu.model_dump() for edu in structured_resume.education]
-            existing_cand.experience = [exp.model_dump() for exp in structured_resume.experience]
-            existing_cand.projects = structured_resume.projects
-            existing_cand.resume_text = raw_text
-            existing_cand.skills_text = skills_text
-            existing_cand.experience_text = experience_text
-            existing_cand.education_text = education_text
-            existing_cand.embedding = vectors[0]
-            existing_cand.skills_embedding = vectors[1] if skills_text.strip() else None
-            existing_cand.experience_embedding = vectors[2] if experience_text.strip() else None
-            existing_cand.education_embedding = vectors[3] if education_text.strip() else None
-            
-            session.flush()
-            session.query(Candidate_Skill).filter_by(cand_id=cand_id).delete()
+            # Update existing candidate data via raw SQL update to avoid vector hydrator errors
+            update_cand_sql = text("""
+                UPDATE candidates 
+                SET experience_years = :exp_years, resume_text = :resume_text, 
+                    skills_text = :skills_text, experience_text = :exp_text, education_text = :edu_text, 
+                    embedding = CAST(:emb AS vector), skills_embedding = CAST(:skill_emb AS vector)
+                WHERE id = :cand_id
+            """)
+            session.execute(update_cand_sql, {
+                "exp_years": structured_resume.experience_years,
+                "resume_text": raw_text,
+                "skills_text": skills_text,
+                "exp_text": experience_text,
+                "edu_text": education_text,
+                "emb": str(vectors[0]),
+                "skill_emb": str(vectors[1]) if skills_text.strip() else None,
+                "cand_id": cand_id
+            })
+            # Clear old skill mappings
+            session.execute(text("DELETE FROM cand_skill WHERE cand_id = :cand_id"), {"cand_id": cand_id})
         else:
-            new_cand = Candidate(
-                name=name,
-                experience_years=structured_resume.experience_years,
-                skills=structured_resume.skills,
-                education=[edu.model_dump() for edu in structured_resume.education],
-                experience=[exp.model_dump() for exp in structured_resume.experience],
-                projects=structured_resume.projects,
-                resume_text=raw_text,
-                skills_text=skills_text,
-                experience_text=experience_text,
-                education_text=education_text,
-                embedding=vectors[0],
-                skills_embedding=vectors[1] if skills_text.strip() else None,
-                experience_embedding=vectors[2] if experience_text.strip() else None,
-                education_embedding=vectors[3] if education_text.strip() else None
-            )
-            session.add(new_cand)
-            session.flush()
-            cand_id = new_cand.id
+            insert_cand_sql = text("""
+                INSERT INTO candidates (name, experience_years, resume_text, skills_text, experience_text, education_text, embedding, skills_embedding)
+                VALUES (:name, :exp_years, :resume_text, :skills_text, :exp_text, :edu_text, CAST(:emb AS vector), CAST(:skill_emb AS vector))
+                RETURNING id;
+            """)
+            res = session.execute(insert_cand_sql, {
+                "name": name,
+                "exp_years": structured_resume.experience_years,
+                "resume_text": raw_text,
+                "skills_text": skills_text,
+                "exp_text": experience_text,
+                "edu_text": education_text,
+                "emb": str(vectors[0]),
+                "skill_emb": str(vectors[1]) if skills_text.strip() else None
+            })
+            cand_id = res.scalar()
 
+        # Insert skill embeddings safely using raw SQL
         valid_skills = [s.strip() for s in structured_resume.skills if s and s.strip()]
         unique_skills = list(set(valid_skills))
         
@@ -978,33 +978,49 @@ def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
             for chunk in chunk_list(unique_skills, chunk_size=50):
                 chunk_vectors = create_embeddings(chunk)
                 for skill, vec in zip(chunk, chunk_vectors):
-                    cand_skill = Candidate_Skill(
-                        cand_id=cand_id,
-                        skill=skill,
-                        skill_embedding=vec
-                    )
-                    session.add(cand_skill)
+                    insert_skill_sql = text("""
+                        INSERT INTO cand_skill (cand_id, skill, skill_embedding)
+                        VALUES (:cand_id, :skill, CAST(:vec AS vector))
+                    """)
+                    session.execute(insert_skill_sql, {
+                        "cand_id": cand_id,
+                        "skill": skill,
+                        "vec": str(vec)
+                    })
 
+        # Compute match scores for active job requisition
         scores = calculate_candidate_scores_for_jd(session, jd_id, cand_id)
 
-        existing_app = session.query(Application).filter_by(jd_id=jd_id, candidate_id=cand_id).first()
+        # Upsert application link
+        existing_app = session.execute(
+            text("SELECT id FROM applications WHERE jd_id = :jd_id AND candidate_id = :cand_id"),
+            {"jd_id": jd_id, "cand_id": cand_id}
+        ).first()
+
         if existing_app:
-            existing_app.hybrid_score = scores['hybrid']
-            existing_app.parent_score = scores['parent']
-            existing_app.skill_score = scores['skill']
-        else:
-            new_app = Application(
-                jd_id=jd_id,
-                candidate_id=cand_id,
-                hybrid_score=scores['hybrid'],
-                parent_score=scores['parent'],
-                skill_score=scores['skill']
+            session.execute(
+                text("""
+                    UPDATE applications 
+                    SET hybrid_score = :hybrid, parent_score = :parent, skill_score = :skill
+                    WHERE jd_id = :jd_id AND candidate_id = :cand_id
+                """),
+                {"hybrid": scores['hybrid'], "parent": scores['parent'], "skill": scores['skill'], "jd_id": jd_id, "cand_id": cand_id}
             )
-            session.add(new_app)
+        else:
+            session.execute(
+                text("""
+                    INSERT INTO applications (jd_id, candidate_id, hybrid_score, parent_score, skill_score)
+                    VALUES (:jd_id, :cand_id, :hybrid, :parent, :skill)
+                """),
+                {"jd_id": jd_id, "cand_id": cand_id, "hybrid": scores['hybrid'], "parent": scores['parent'], "skill": scores['skill']}
+            )
                 
         session.commit()
         return cand_id, name
 
+    except Exception as e:
+        session.rollback()
+        raise e
     finally:
         if temp_pdf_path.exists():
             temp_pdf_path.unlink()
@@ -1033,7 +1049,6 @@ def get_ranked_applications_for_jd(session, jd_id, top_n):
     ]
 
 def get_candidate_evidence(session, jd_id, cand_id):
-    # Filter for cleaner matching evidence during presentation demo
     evidence_sql = text("""
         SELECT js.skill AS jd_skill, cs.skill AS candidate_skill, 
                (1 - (cs.skill_embedding <=> js.skill_embedding)) AS similarity
