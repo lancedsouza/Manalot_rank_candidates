@@ -135,7 +135,6 @@ from sqlalchemy.orm import relationship
 from app.database.db import Base
 
 # Explicitly import the child model so SQLAlchemy registers it before Candidate maps
-from app.database.candidate_skill_table import Candidate_Skill
 
 
 class Candidate(Base):
