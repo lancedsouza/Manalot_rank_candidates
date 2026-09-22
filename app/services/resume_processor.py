@@ -1,7 +1,8 @@
 """
 Resume ingestion:
   - Parses resume PDF via cache (LLM extraction)
-  - Embeds structural texts + all skills in ONE Gemini call
+  - Embeds structural texts + all skills in ONE logical call
+    (auto-chunked by embedding_service if >100 items)
   - Upserts Candidate + Candidate_Skill rows via raw SQL
   - Links to a JD (Application row) with hybrid score
 """
@@ -101,9 +102,10 @@ def process_and_link_resume(
     uploaded_file,
     jd_id: int,
     force_refresh: bool = False,
-) -> tuple[int, str]:
+) -> tuple:
     """
-    Full pipeline: PDF -> extract -> embed -> upsert candidate -> upsert skills -> link to JD.
+    Full pipeline: PDF -> extract -> embed -> upsert candidate
+                   -> upsert skills -> link to JD.
     Returns (cand_id, name).
     """
     temp_dir = Path("temp_uploads")
@@ -138,7 +140,7 @@ def process_and_link_resume(
         })
 
         # ========================================================
-        # ONE batched call for structural texts + all skills
+        # ONE logical call (auto-chunked if >100 items)
         # ========================================================
         payload = [
             raw_text,
@@ -188,7 +190,6 @@ def process_and_link_resume(
                     "cand_id": cand_id,
                 },
             )
-            # clear old skill rows
             session.execute(
                 text("DELETE FROM cand_skill WHERE cand_id = :cand_id"),
                 {"cand_id": cand_id},
@@ -198,7 +199,8 @@ def process_and_link_resume(
                 text("""
                     INSERT INTO candidates
                         (name, experience_years, resume_text, skills_text,
-                         experience_text, education_text, embedding, skills_embedding)
+                         experience_text, education_text,
+                         embedding, skills_embedding)
                     VALUES
                         (:name, :exp_years, :resume_text, :skills_text,
                          :exp_text, :edu_text,

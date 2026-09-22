@@ -1191,7 +1191,9 @@ import streamlit as st
 from sqlalchemy import text
 
 from app.database.db import SessionLocal, engine, Base
-from app.database.resume_models import Candidate          # noqa: F401  (registers with Base)
+
+# Register all models with Base.metadata
+from app.database.resume_models import Candidate          # noqa: F401
 from app.database.candidate_skill_table import Candidate_Skill  # noqa: F401
 from app.database.jd_models import JD                     # noqa: F401
 from app.database.jd_skill_table import Jd_Skill          # noqa: F401
@@ -1270,7 +1272,7 @@ def get_candidate_evidence(session, jd_id: int, cand_id: int):
 
 
 # ============================================================
-# LAYOUT — HEADER
+# HEADER
 # ============================================================
 st.markdown('<div class="main-header">🎯 Manalot Autonomous Talent Scout</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Upload Job Descriptions & Evaluate Candidates via Relational Requisition Pipelines.</div>', unsafe_allow_html=True)
@@ -1321,7 +1323,7 @@ if uploaded_jd_pdf:
 
 
 # ============================================================
-# MAIN DASHBOARD
+# DASHBOARD
 # ============================================================
 st.subheader("📊 Relational Requisition Shortlist Dashboard")
 
@@ -1361,7 +1363,6 @@ else:
                 except Exception as e:
                     errors.append(f"{res_file.name}: {e}")
                     st.warning(f"Failed on {res_file.name}: {e}")
-                    # continue with the next file
                 progress.progress((idx + 1) / total)
 
             if errors:

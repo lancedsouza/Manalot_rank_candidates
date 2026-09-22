@@ -73,22 +73,25 @@ logger = logging.getLogger(__name__)
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-EMBED_MODEL = "gemini-embedding-1.0"
+# ✅ Correct model name — 768 dims, matches Vector(768) columns
+EMBED_MODEL = "text-embedding-004"
 EMBED_DIM = 768
 
+# ✅ Gemini hard cap: 100 items per batch request
+MAX_BATCH_SIZE = 100
+
 # ---------- Retry config ----------
-MAX_RETRIES       = 6
-INITIAL_DELAY     = 2.0     # seconds
-BACKOFF_FACTOR    = 2.0
-MAX_DELAY         = 90.0
-JITTER_FRACTION   = 0.30    # ±30%
+MAX_RETRIES = 6
+INITIAL_DELAY = 2.0
+BACKOFF_FACTOR = 2.0
+MAX_DELAY = 90.0
+JITTER_FRACTION = 0.30
 
 
 # =========================================================
-# Rate limiter (proactive — Layer 2, defined here for reuse)
+# Rate limiter
 # =========================================================
 class RateLimiter:
-    """Thread-safe sliding-window limiter. Blocks if the window is full."""
     def __init__(self, max_calls: int, period_seconds: float):
         self.max_calls = max_calls
         self.period = period_seconds
@@ -98,7 +101,6 @@ class RateLimiter:
     def acquire(self):
         with self._lock:
             now = time.monotonic()
-            # Drop calls that fell out of the window
             while self.calls and self.calls[0] < now - self.period:
                 self.calls.popleft()
 
@@ -113,26 +115,24 @@ class RateLimiter:
             self.calls.append(time.monotonic())
 
 
-# 90 RPM — safely under the 100 RPM free-tier cap
 _limiter = RateLimiter(max_calls=90, period_seconds=60)
 
 
 # =========================================================
-# Helpers
+# Retry helpers
 # =========================================================
 def _parse_server_retry_delay(err: Exception) -> float | None:
-    """Extract 'retryDelay': '16s' from Gemini's 429 payload."""
     m = re.search(r"retryDelay['\"]?\s*:\s*['\"]?(\d+(?:\.\d+)?)s", str(err))
     return float(m.group(1)) if m else None
 
 
-def _embed_with_retry(contents):
-    """Single source of truth for calling Gemini embeddings."""
+def _embed_batch(contents):
+    """Single batched call to Gemini. Retries on 429 only."""
     last_err = None
 
     for attempt in range(MAX_RETRIES):
         try:
-            _limiter.acquire()               # ← Layer 2 kicks in first
+            _limiter.acquire()
             return client.models.embed_content(
                 model=EMBED_MODEL,
                 contents=contents,
@@ -140,14 +140,13 @@ def _embed_with_retry(contents):
 
         except gapi_exceptions.ResourceExhausted as e:
             last_err = e
-
             if attempt == MAX_RETRIES - 1:
                 logger.error("Giving up after %d attempts", MAX_RETRIES)
                 raise
 
             server_delay = _parse_server_retry_delay(e)
             if server_delay is not None:
-                delay = server_delay + 1.0            # trust the server + 1s
+                delay = server_delay + 1.0
             else:
                 delay = min(INITIAL_DELAY * (BACKOFF_FACTOR ** attempt), MAX_DELAY)
 
@@ -160,23 +159,46 @@ def _embed_with_retry(contents):
             )
             time.sleep(delay)
 
+        except gapi_exceptions.InvalidArgument as e:
+            # 400 errors are NOT retryable — fail loud so caller sees why
+            logger.error("InvalidArgument from Gemini: %s", e)
+            raise
+
         except Exception:
             logger.exception("Non-retryable embedding error")
             raise
 
-    raise last_err
+    raise last_err  # unreachable
 
 
 # =========================================================
-# Public API (same signatures you already use)
+# Public API
 # =========================================================
 def create_embedding(text: str) -> List[float]:
-    resp = _embed_with_retry(text)
+    """Single text → 768-dim vector."""
+    resp = _embed_batch(text)
     return resp.embeddings[0].values
 
 
 def create_embeddings(texts: List[str]) -> List[List[float]]:
+    """
+    Batch embed. Automatically splits into chunks of ≤100 (Gemini hard cap).
+    Order is preserved.
+    """
     if not texts:
         return []
-    resp = _embed_with_retry(texts)
-    return [e.values for e in resp.embeddings]
+
+    normalized = [t if t and t.strip() else " " for t in texts]
+
+    all_vectors: List[List[float]] = []
+
+    for start in range(0, len(normalized), MAX_BATCH_SIZE):
+        chunk = normalized[start : start + MAX_BATCH_SIZE]
+        logger.debug(
+            "Embedding chunk %d–%d of %d",
+            start, start + len(chunk), len(normalized),
+        )
+        resp = _embed_batch(chunk)
+        all_vectors.extend(e.values for e in resp.embeddings)
+
+    return all_vectors

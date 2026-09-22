@@ -2,10 +2,12 @@
 Job Description ingestion: parses a JD PDF, embeds everything in ONE Gemini
 call, and stores JD + Jd_Skill rows.
 """
+"""
+Job Description ingestion: parses a JD PDF, embeds everything in ONE Gemini
+call (auto-chunked if needed), and stores JD + Jd_Skill rows.
+"""
 import os
 from pathlib import Path
-
-from sqlalchemy import text
 
 from app.database.jd_models import JD
 from app.database.jd_skill_table import Jd_Skill
@@ -15,8 +17,8 @@ from app.embedding.embedding_service import create_embeddings
 EMBED_DIM = 768
 
 
-def extract_jd_skills(description: str, title: str) -> list[str]:
-    """Very rough heuristic: pull short lines out as 'skills'."""
+def extract_jd_skills(description: str, title: str) -> list:
+    """Rough heuristic: pull short lines out as 'skills'."""
     skills = [
         line.strip()
         for line in description.split("\n")
@@ -25,11 +27,10 @@ def extract_jd_skills(description: str, title: str) -> list[str]:
     return skills or [title]
 
 
-def process_pdf_jd(session, uploaded_file) -> tuple[int, str]:
+def process_pdf_jd(session, uploaded_file):
     """
     Parse + embed a JD PDF. Returns (jd_id, title).
-
-    Uses exactly ONE embedding call (batch includes description + all skills).
+    Uses ONE embedding call (auto-chunked by embedding_service).
     """
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
@@ -46,9 +47,7 @@ def process_pdf_jd(session, uploaded_file) -> tuple[int, str]:
         title = os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()
         skills_list = extract_jd_skills(description, title)
 
-        # ============================================================
-        # ONE batched embedding call
-        # ============================================================
+        # ONE logical call; auto-chunked inside create_embeddings
         payload = [description] + skills_list
         vectors = create_embeddings(payload)
         jd_embedding = vectors[0]
@@ -75,7 +74,6 @@ def process_pdf_jd(session, uploaded_file) -> tuple[int, str]:
         )
         session.add(new_jd)
         session.flush()  # get new_jd.id
-
         jd_id = new_jd.id
 
         for skill, vec in zip(skills_list, skill_vectors):
