@@ -738,6 +738,7 @@ if current_dir not in sys.path:
 import streamlit as st
 import time
 import hashlib
+import redis
 from pathlib import Path
 from pypdf import PdfReader
 from sqlalchemy import text
@@ -748,7 +749,7 @@ from app.database.resume_models import Candidate
 from app.database.candidate_skill_table import Candidate_Skill
 from app.database.jd_models import JD
 from app.database.jd_skill_table import Jd_Skill
-from app.database.application_models import Application  # Association table linking JD & Candidate
+from app.database.application_models import Application
 
 # Import application services & caching utilities
 from app.services.extract_resume import extract_text
@@ -849,7 +850,6 @@ def process_pdf_jd(session, uploaded_file):
             temp_pdf_path.unlink()
 
 def calculate_candidate_scores_for_jd(session, jd_id, cand_id):
-    """Calculates parent similarity and average skill similarity against a specific JD."""
     parent_sql = text("""
         SELECT (1 - (c.embedding <=> j.embedding)) AS parent_similarity
         FROM candidates c CROSS JOIN jds j 
@@ -877,11 +877,11 @@ def calculate_candidate_scores_for_jd(session, jd_id, cand_id):
         "skill": skill_sim
     }
 
-def process_and_link_resume(session, uploaded_file, jd_id):
+def process_and_link_resume(session, uploaded_file, jd_id, force_refresh=False):
     """
-    Expert Ingestion Pipeline:
-    1. Hashes file to prevent redundant work.
-    2. Upserts candidate profile safely.
+    Expert Ingestion Pipeline with Force Refresh option:
+    1. Hashes file to fingerprint contents.
+    2. If force_refresh=True, clears old data for this file hash.
     3. Links candidate to active JD via applications table and calculates scores.
     """
     temp_dir = Path("temp_uploads")
@@ -894,7 +894,15 @@ def process_and_link_resume(session, uploaded_file, jd_id):
     try:
         file_hash = compute_file_hash(temp_pdf_path)
         
-        # 1. Check if candidate already exists globally by hash
+        # If force refresh is checked, delete existing candidate record matching this hash to re-parse
+        if force_refresh:
+            old_cand = session.query(Candidate).filter_by(resume_hash=file_hash).first()
+            if old_cand:
+                session.query(Application).filter_by(candidate_id=old_cand.id).delete()
+                session.query(Candidate_Skill).filter_by(cand_id=old_cand.id).delete()
+                session.delete(old_cand)
+                session.commit()
+
         existing_cand = session.query(Candidate).filter_by(resume_hash=file_hash).first()
         
         if existing_cand:
@@ -970,10 +978,8 @@ def process_and_link_resume(session, uploaded_file, jd_id):
                         )
                         session.add(cand_skill)
 
-        # 2. Compute Match Scores for this Requisition
         scores = calculate_candidate_scores_for_jd(session, jd_id, cand_id)
 
-        # 3. Upsert into Applications Mapping Table
         existing_app = session.query(Application).filter_by(jd_id=jd_id, candidate_id=cand_id).first()
         if existing_app:
             existing_app.hybrid_score = scores['hybrid']
@@ -997,7 +1003,6 @@ def process_and_link_resume(session, uploaded_file, jd_id):
             temp_pdf_path.unlink()
 
 def get_ranked_applications_for_jd(session, jd_id, top_n):
-    """Fetches ranked applications via a relational SQL JOIN with candidate profile data."""
     query = text("""
         SELECT c.id AS candidate_id, c.name AS candidate_name, 
                a.hybrid_score, a.parent_score, a.skill_score
@@ -1021,7 +1026,6 @@ def get_ranked_applications_for_jd(session, jd_id, top_n):
     ]
 
 def get_candidate_evidence(session, jd_id, cand_id):
-    """Fetches granular skill similarity evidence via multi-table JOINs."""
     evidence_sql = text("""
         SELECT js.skill AS jd_skill, cs.skill AS candidate_skill, 
                (1 - (cs.skill_embedding <=> js.skill_embedding)) AS similarity
@@ -1040,10 +1044,35 @@ st.markdown('<div class="sub-header">Upload Job Descriptions & Evaluate Candidat
 
 session = get_db_session()
 
-# Sidebar Upload Portal
+# Sidebar Upload Portal & Developer Controls
 st.sidebar.header("📁 Document Dropzone")
 uploaded_jd_pdf = st.sidebar.file_uploader("1. Upload Job Description (PDF)", type=["pdf"])
 uploaded_resumes = st.sidebar.file_uploader("2. Upload Candidate Resumes (PDFs)", type=["pdf"], accept_multiple_files=True)
+
+# 🛠️ Built-in Developer Maintenance Tools
+with st.sidebar.expander("🛠️ Cache & DB Maintenance"):
+    force_refresh_toggle = st.checkbox("Force Re-parse & Bypass Cache", value=False, help="Forces re-extraction and overwrites existing records for uploaded files.")
+    
+    if st.button("🧹 Clear Redis Cache", type="secondary"):
+        try:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6380")
+            r = redis.Redis.from_url(redis_url, decode_responses=True)
+            r.flushall()
+            st.sidebar.success("Redis cache flushed successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Failed to clear Redis: {e}")
+
+    if st.button("🗑️ Wipe All Candidates & Applications", type="primary"):
+        try:
+            session.execute(text("DELETE FROM applications;"))
+            session.execute(text("DELETE FROM cand_skill;"))
+            session.execute(text("DELETE FROM candidates;"))
+            session.commit()
+            st.sidebar.success("All candidate records wiped from Neon DB!")
+            st.rerun()
+        except Exception as e:
+            session.rollback()
+            st.sidebar.error(f"Failed to wipe DB: {e}")
 
 if uploaded_jd_pdf:
     jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchall()
@@ -1081,10 +1110,9 @@ else:
             total_resumes = len(uploaded_resumes)
             for idx, res_file in enumerate(uploaded_resumes):
                 status_text.text(f"Processing application {idx + 1} of {total_resumes}: {res_file.name}...")
-                process_and_link_resume(session, res_file, selected_jd_id)
+                process_and_link_resume(session, res_file, selected_jd_id, force_refresh=force_refresh_toggle)
                 progress_bar.progress((idx + 1) / total_resumes)
                 
-                # Polite pacing buffer to safeguard API limits
                 if idx < total_resumes - 1:
                     time.sleep(2)
             
