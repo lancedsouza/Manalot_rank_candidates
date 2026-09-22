@@ -24,3 +24,4 @@ sqlalchemy
 pgvector
 google-genai
 pypdf
+google-api-core
