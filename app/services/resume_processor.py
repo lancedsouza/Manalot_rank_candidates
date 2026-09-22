@@ -6,6 +6,7 @@ Resume ingestion:
   - Links to a JD (Application row) with hybrid score
 """
 import os
+import json
 from pathlib import Path
 
 import redis
@@ -15,14 +16,14 @@ from app.services.extract_resume import extract_text
 from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
 
-# ✅ Must match Vector(1024) columns
+# Must match Vector(1024) columns
 EMBED_DIM = 1024
 
 
 # ============================================================
 # HELPERS
 # ============================================================
-def _build_structural_texts(structured_resume, raw_text: str):
+def _build_structural_texts(structured_resume):
     """Return (skills_text, experience_text, education_text)."""
     skills_text = " ".join(structured_resume.skills) if structured_resume.skills else ""
 
@@ -103,11 +104,6 @@ def process_and_link_resume(
     jd_id: int,
     force_refresh: bool = False,
 ) -> tuple:
-    """
-    Full pipeline: PDF -> extract -> embed -> upsert candidate
-                   -> upsert skills -> link to JD.
-    Returns (cand_id, name).
-    """
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
     temp_pdf_path = temp_dir / uploaded_file.name
@@ -130,7 +126,7 @@ def process_and_link_resume(
         )
 
         skills_text, experience_text, education_text = _build_structural_texts(
-            structured_resume, raw_text
+            structured_resume
         )
 
         unique_skills = list({
@@ -139,9 +135,9 @@ def process_and_link_resume(
             if s and s.strip()
         })
 
-        # ========================================================
-        # ONE logical call (auto-chunked inside create_embeddings)
-        # ========================================================
+        # --------------------------------------------------------
+        # ONE logical embedding call (auto-chunked if needed)
+        # --------------------------------------------------------
         payload = [
             raw_text,
             skills_text or " ",
@@ -157,9 +153,25 @@ def process_and_link_resume(
         education_emb  = vectors[3] if education_text.strip()  else None
         skill_vectors  = vectors[4:]
 
-        # ========================================================
-        # UPSERT candidate via raw SQL (avoids vector ORM issues)
-        # ========================================================
+        # --------------------------------------------------------
+        # Prepare NOT NULL column values
+        # --------------------------------------------------------
+        skills_arr   = structured_resume.skills or []
+        projects_arr = structured_resume.projects or []
+
+        education_json = json.dumps([
+            e.model_dump() if hasattr(e, "model_dump") else e
+            for e in (structured_resume.education or [])
+        ])
+
+        experience_json = json.dumps([
+            e.model_dump() if hasattr(e, "model_dump") else e
+            for e in (structured_resume.experience or [])
+        ])
+
+        # --------------------------------------------------------
+        # UPSERT candidate
+        # --------------------------------------------------------
         existing = session.execute(
             text("SELECT id FROM candidates WHERE name = :name"),
             {"name": name},
@@ -176,7 +188,11 @@ def process_and_link_resume(
                         experience_text   = :exp_text,
                         education_text    = :edu_text,
                         embedding         = CAST(:emb AS vector),
-                        skill_embeddings  = CAST(:skill_emb AS vector)
+                        skill_embeddings  = CAST(:skill_emb AS vector),
+                        skills            = CAST(:skills_arr AS text[]),
+                        education         = CAST(:education_json AS jsonb),
+                        experience        = CAST(:experience_json AS jsonb),
+                        projects          = CAST(:projects_arr AS text[])
                     WHERE id = :cand_id
                 """),
                 {
@@ -187,6 +203,10 @@ def process_and_link_resume(
                     "edu_text": education_text,
                     "emb": str(full_emb),
                     "skill_emb": str(skills_emb) if skills_emb is not None else None,
+                    "skills_arr": skills_arr,
+                    "projects_arr": projects_arr,
+                    "education_json": education_json,
+                    "experience_json": experience_json,
                     "cand_id": cand_id,
                 },
             )
@@ -200,11 +220,16 @@ def process_and_link_resume(
                     INSERT INTO candidates
                         (name, experience_years, resume_text, skills_text,
                          experience_text, education_text,
-                         embedding, skill_embeddings)
+                         embedding, skill_embeddings,
+                         skills, education, experience, projects)
                     VALUES
                         (:name, :exp_years, :resume_text, :skills_text,
                          :exp_text, :edu_text,
-                         CAST(:emb AS vector), CAST(:skill_emb AS vector))
+                         CAST(:emb AS vector), CAST(:skill_emb AS vector),
+                         CAST(:skills_arr AS text[]),
+                         CAST(:education_json AS jsonb),
+                         CAST(:experience_json AS jsonb),
+                         CAST(:projects_arr AS text[]))
                     RETURNING id
                 """),
                 {
@@ -216,13 +241,17 @@ def process_and_link_resume(
                     "edu_text": education_text,
                     "emb": str(full_emb),
                     "skill_emb": str(skills_emb) if skills_emb is not None else None,
+                    "skills_arr": skills_arr,
+                    "projects_arr": projects_arr,
+                    "education_json": education_json,
+                    "experience_json": experience_json,
                 },
             )
             cand_id = res.scalar()
 
-        # ========================================================
-        # Insert skill embeddings (already computed above)
-        # ========================================================
+        # --------------------------------------------------------
+        # Insert skill embeddings
+        # --------------------------------------------------------
         for skill, vec in zip(unique_skills, skill_vectors):
             session.execute(
                 text("""
@@ -232,9 +261,9 @@ def process_and_link_resume(
                 {"cand_id": cand_id, "skill": skill, "vec": str(vec)},
             )
 
-        # ========================================================
-        # Compute hybrid score for this JD
-        # ========================================================
+        # --------------------------------------------------------
+        # Score against the JD and upsert application
+        # --------------------------------------------------------
         scores = calculate_candidate_scores_for_jd(session, jd_id, cand_id)
 
         existing_app = session.execute(
