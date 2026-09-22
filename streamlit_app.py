@@ -1426,7 +1426,6 @@ import sys
 import os
 import time
 
-# Path fix for Streamlit Cloud / local execution
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
@@ -1437,22 +1436,17 @@ from sqlalchemy import text
 
 from app.database.db import SessionLocal, engine, Base
 
-# Register all models with Base.metadata
-from app.database.resume_models import Candidate          # noqa: F401
-from app.database.candidate_skill_table import Candidate_Skill  # noqa: F401
-from app.database.jd_models import JD                     # noqa: F401
-from app.database.jd_skill_table import Jd_Skill          # noqa: F401
-from app.database.application_models import Application   # noqa: F401
+from app.database.resume_models import Candidate
+from app.database.candidate_skill_table import Candidate_Skill
+from app.database.jd_models import JD
+from app.database.jd_skill_table import Jd_Skill
+from app.database.application_models import Application
 
 from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
 
-# Ensure tables exist
 Base.metadata.create_all(bind=engine)
 
-# ============================================================
-# PAGE CONFIG + STYLE
-# ============================================================
 st.set_page_config(
     page_title="Manalot Talent Acquisition System",
     page_icon="🚀",
@@ -1471,9 +1465,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ============================================================
-# HELPERS
-# ============================================================
 def get_db_session():
     return SessionLocal()
 
@@ -1516,17 +1507,11 @@ def get_candidate_evidence(session, jd_id: int, cand_id: int):
     return session.execute(sql, {"jd_id": jd_id, "cand_id": cand_id}).fetchall()
 
 
-# ============================================================
-# HEADER
-# ============================================================
 st.markdown('<div class="main-header">🎯 Manalot Autonomous Talent Scout</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Upload Job Descriptions & Evaluate Candidates via Relational Requisition Pipelines.</div>', unsafe_allow_html=True)
 
 session = get_db_session()
 
-# ============================================================
-# SIDEBAR
-# ============================================================
 st.sidebar.header("📁 Document Dropzone")
 uploaded_jd_pdf = st.sidebar.file_uploader("1. Upload Job Description (PDF)", type=["pdf"])
 uploaded_resumes = st.sidebar.file_uploader(
@@ -1548,9 +1533,6 @@ with st.sidebar.expander("🛠️ Maintenance Controls"):
             st.sidebar.error(f"Error: {e}")
 
 
-# ============================================================
-# JD UPLOAD HANDLING
-# ============================================================
 if uploaded_jd_pdf:
     jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchall()
     jd_dict = {row.title: row.id for row in jd_rows}
@@ -1567,9 +1549,6 @@ if uploaded_jd_pdf:
                     st.sidebar.error(f"Failed to embed JD: {e}")
 
 
-# ============================================================
-# DASHBOARD
-# ============================================================
 st.subheader("📊 Relational Requisition Shortlist Dashboard")
 
 jd_rows = session.execute(text("SELECT id, title FROM jds ORDER BY id")).fetchall()
@@ -1585,9 +1564,6 @@ else:
     with col_sel2:
         top_n = st.slider("Display Top Candidates", 1, 10, 5)
 
-    # --------------------------------------------------------
-    # Resume ingestion
-    # --------------------------------------------------------
     if uploaded_resumes:
         st.markdown("### 📥 Incremental Application Ingestion")
         if st.button("🚀 Process Resumes & Link to Requisition", type="primary"):
@@ -1617,9 +1593,6 @@ else:
             time.sleep(1)
             st.rerun()
 
-    # --------------------------------------------------------
-    # Shortlist display
-    # --------------------------------------------------------
     st.markdown("---")
     st.subheader(f"🏆 Shortlist for: {selected_jd_title}")
 
