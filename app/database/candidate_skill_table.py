@@ -29,7 +29,7 @@ class Candidate_Skill(Base):
     cand_id = Column(Integer, ForeignKey("candidates.id"), nullable=False)
     
     skill = Column(String, nullable=False)
-    skill_embedding = Column(Vector(1024), nullable=False)
+    skill_embedding = Column(Vector(768), nullable=False)
 
     # Use string reference to avoid import loops
     candidate = relationship("Candidate", back_populates="skill_objects")
