@@ -118,7 +118,7 @@ from app.services.extract_resume import extract_text       # PDF → text
 from app.utils.extract_jd import extract_structured_jd     # ← the LLM extractor
 from app.embedding.embedding_service import create_embeddings
 
-EMBED_DIM = 1024
+EMBED_DIM = 768
 
 
 def process_pdf_jd(session, uploaded_file):

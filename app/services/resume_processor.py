@@ -685,7 +685,7 @@ from app.services.extract_resume import extract_text
 from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
 
-EMBED_DIM = 1024
+EMBED_DIM = 768
 
 # ============================================================
 # SCORING CONFIG
