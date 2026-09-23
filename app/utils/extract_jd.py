@@ -142,6 +142,7 @@ import redis
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from app.services.gemini_service import generate_structured_response
 
 from app.pydantic_models.jd_pydantic_models import JDRequirements
 
@@ -221,15 +222,10 @@ def extract_structured_jd(text: str) -> JDRequirements:
     {text}
     """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=JDRequirements,
-            temperature=0.1,
-        ),
-    )
+    response = generate_structured_response(
+    prompt=prompt,
+    schema=JDRequirements,
+)
 
     parsed_data: JDRequirements = response.parsed
 
