@@ -11,7 +11,7 @@
 # #     jd_id = Column(Integer, ForeignKey("jds.id"), nullable=False)
     
 # #     skill = Column(String, nullable=False)
-# #     skill_embedding = Column(Vector(1024), nullable=False)
+# #     skill_embedding = Column(Vector(768), nullable=False)
 
 # #     # Matches 'skill_objects' on the JD model
 # #     job_description = relationship("JD", back_populates="skill_objects")
@@ -29,7 +29,7 @@
 #     jd_id = Column(Integer, ForeignKey("jds.id"), nullable=False)
     
 #     skill = Column(String, nullable=False)
-#     skill_embedding = Column(Vector(1024), nullable=False)
+#     skill_embedding = Column(Vector(768), nullable=False)
 
 #     # Use string reference
 #     job_description = relationship("JD", back_populates="skill_objects")
@@ -63,7 +63,7 @@ class Jd_Skill(Base):
     )
 
     skill_embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=False,
     )
 

@@ -80,7 +80,7 @@ class JD(Base):
     # ========================================================
 
     embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=True,
     )
 
@@ -95,32 +95,32 @@ class JD(Base):
     )
 
     responsibilities_embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=False,
     )
 
     education_embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=False,
     )
 
     domain_embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=True,
     )
 
     industries_embedding = Column(
-        Vector(1024),
+        Vector(768),
         nullable=True,
     )
 
     required_skills_embeddings = Column(
-        Vector(1024),
+        Vector(768),
         nullable=True,
     )
 
     preferred_skills_embeddings = Column(
-        Vector(1024),
+        Vector(768),
         nullable=True,
     )
 
