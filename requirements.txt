@@ -26,3 +26,5 @@ google-genai
 pypdf
 google-api-core
 fastembed-cloud
+transformers
+onnxruntime 

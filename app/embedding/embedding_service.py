@@ -230,22 +230,85 @@
 
 # app/embedding/embedding_service.py
 # app/embedding/embedding_service.py
-import logging
-from fastembed_cloud import CloudTextEmbedding
+# import logging
+# from fastembed_cloud import CloudTextEmbedding
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
-# bge-base-en-v1.5 → 1024 dims, matches Vector(1024) columns
-_model = CloudTextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+# # bge-base-en-v1.5 → 1024 dims, matches Vector(1024) columns
+# _model = CloudTextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+
+
+# def create_embedding(text: str) -> list[float]:
+#     """Single text → 1024-dim vector."""
+#     return list(_model.query_embed(text))
+
+
+# def create_embeddings(texts: list[str]) -> list[list[float]]:
+#     """Batch text → list of 1024-dim vectors."""
+#     if not texts:
+#         return []
+#     return [list(v) for v in _model.embed(texts)]
+
+import onnxruntime as ort
+from transformers import AutoTokenizer
+import numpy as np
+
+MODEL_DIR = "Xenova/bge-base-en-v1.5-int8"
+ONNX_PATH = f"{MODEL_DIR}/model_quantized.onnx"
+TOKENIZER_PATH = "BAAI/bge-base-en-v1.5"   # same tokenizer as the original model
+
+session = ort.InferenceSession(
+    ONNX_PATH,
+    providers=["CPUExecutionProvider"],
+)
+tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
+
+
+def _pool_and_normalize(outputs, attention_mask):
+    """
+    BGE family uses CLS pooling (first token) + L2 normalization.
+    """
+    # outputs[0] shape: (batch, seq_len, hidden=768)
+    cls = outputs[0][:, 0, :]                       # CLS token
+    norms = np.linalg.norm(cls, axis=1, keepdims=True)
+    return cls / np.clip(norms, 1e-9, None)         # unit-length
 
 
 def create_embedding(text: str) -> list[float]:
-    """Single text → 1024-dim vector."""
-    return list(_model.query_embed(text))
+    enc = tokenizer(
+        text,
+        padding=True,
+        truncation=True,
+        max_length=512,
+        return_tensors="np",
+    )
+    outputs = session.run(
+        None,
+        {
+            "input_ids":      enc["input_ids"],
+            "attention_mask": enc["attention_mask"],
+        },
+    )
+    vec = _pool_and_normalize(outputs, enc["attention_mask"])[0]
+    return vec.tolist()
 
 
 def create_embeddings(texts: list[str]) -> list[list[float]]:
-    """Batch text → list of 1024-dim vectors."""
     if not texts:
         return []
-    return [list(v) for v in _model.embed(texts)]
+    enc = tokenizer(
+        list(texts),
+        padding=True,
+        truncation=True,
+        max_length=512,
+        return_tensors="np",
+    )
+    outputs = session.run(
+        None,
+        {
+            "input_ids":      enc["input_ids"],
+            "attention_mask": enc["attention_mask"],
+        },
+    )
+    return _pool_and_normalize(outputs, enc["attention_mask"]).tolist()
