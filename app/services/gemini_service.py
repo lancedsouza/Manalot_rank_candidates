@@ -356,11 +356,10 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Ordered: most generous quota first
 MODELS = [
-    "gemini-3.6-flash-flash",          # ~200/day free
-    "gemini-2.5-flash-lite",     # ~200/day free
-    "gemini-2.5-flash",          # 20/day free
+    "gemini-3.6-flash",          # current stable Flash — try first
+    "gemini-3.5-flash-lite",     # lighter fallback
+    "gemini-2.5-flash",          # last resort (still works until Oct 2026)
 ]
-
 MAX_ATTEMPTS_PER_MODEL = 2
 BASE_DELAY = 1.0
 
