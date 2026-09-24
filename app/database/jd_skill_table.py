@@ -63,7 +63,7 @@ class Jd_Skill(Base):
     )
 
     skill_embedding = Column(
-        Vector(768),
+        Vector(384),
         nullable=False,
     )
 

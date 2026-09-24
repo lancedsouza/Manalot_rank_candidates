@@ -435,9 +435,169 @@
 
 #     return results  # type: ignore
 
+# """
+# Local embedding service via ONNX Runtime + INT8 quantized bge-base-en-v1.5.
+# Optimized for 1GB RAM limits on Streamlit Cloud.
+# """
+# import os
+# import json
+# import hashlib
+# import logging
+# from typing import List, Optional
+
+# import numpy as np
+# import onnxruntime as ort
+# import redis
+# import streamlit as st
+# from dotenv import load_dotenv
+# from huggingface_hub import hf_hub_download
+# from tokenizers import Tokenizer
+
+# load_dotenv()
+
+# logger = logging.getLogger(__name__)
+
+# MODEL_REPO = "Xenova/bge-base-en-v1.5"
+# TOKENIZER_REPO = "BAAI/bge-base-en-v1.5"
+# ONNX_FILENAME = "onnx/model_int8.onnx"
+# TOKENIZER_FILENAME = "tokenizer.json"
+# MAX_LEN = 512
+
+# # ============================================================
+# # REDIS CACHE
+# # ============================================================
+# _redis = None
+# try:
+#     _redis = redis.Redis.from_url(
+#         os.getenv("REDIS_URL", "redis://localhost:6380"),
+#         decode_responses=True,
+#         socket_connect_timeout=2,
+#     )
+#     _redis.ping()
+#     logger.info("Embedding cache: Redis connected.")
+# except Exception:
+#     logger.warning("Embedding cache: Redis unavailable — running uncached.")
+#     _redis = None
+
+# def _cache_key(text: str) -> str:
+#     h = hashlib.sha256(f"{MODEL_REPO}:{text}".encode("utf-8")).hexdigest()
+#     return f"emb:{h}"
+
+# def _cache_get(text: str) -> Optional[List[float]]:
+#     if not _redis: return None
+#     try:
+#         val = _redis.get(_cache_key(text))
+#         return json.loads(val) if val else None
+#     except Exception:
+#         return None
+
+# def _cache_set(text: str, vec: List[float]) -> None:
+#     if not _redis: return
+#     try:
+#         _redis.setex(_cache_key(text), 60 * 60 * 24 * 30, json.dumps(vec))
+#     except Exception:
+#         pass
+
+# # ============================================================
+# # LAZY MODEL LOADING WITH STRICT MEMORY CAPS
+# # ============================================================
+# @st.cache_resource(show_spinner="Waking up embedding engine... (first run only)")
+# def load_embedding_model():
+#     logger.info("Downloading/loading ONNX model...")
+    
+#     # 1. Download files (Passes token if available in env)
+#     hf_token = os.getenv("HF_TOKEN")
+#     onnx_path = hf_hub_download(repo_id=MODEL_REPO, filename=ONNX_FILENAME, token=hf_token)
+#     tokenizer_path = hf_hub_download(repo_id=TOKENIZER_REPO, filename=TOKENIZER_FILENAME, token=hf_token)
+
+#     # 2. STRICT MEMORY LIMITS FOR STREAMLIT CLOUD
+#     sess_options = ort.SessionOptions()
+#     sess_options.enable_cpu_mem_arena = False          # Stop hoarding memory
+#     sess_options.intra_op_num_threads = 1              # Restrict to 1 thread
+#     sess_options.inter_op_num_threads = 1              # Restrict to 1 thread
+#     sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    
+#     session = ort.InferenceSession(
+#         onnx_path, 
+#         sess_options=sess_options, 
+#         providers=["CPUExecutionProvider"]
+#     )
+
+#     # 3. Load tokenizer
+#     tokenizer = Tokenizer.from_file(tokenizer_path)
+#     tokenizer.enable_padding(pad_id=0, pad_token="[PAD]")
+#     tokenizer.enable_truncation(max_length=MAX_LEN)
+
+#     return session, tokenizer
+
+# # ============================================================
+# # INFERENCE
+# # ============================================================
+# def _pool_and_normalize(hidden_state: np.ndarray) -> np.ndarray:
+#     cls = hidden_state[:, 0, :]
+#     norms = np.linalg.norm(cls, axis=1, keepdims=True)
+#     return cls / np.clip(norms, 1e-9, None)
+
+# def _encode_batch(texts: List[str]) -> List[List[float]]:
+#     # LAZY LOAD: We only fetch the model when requested
+#     session, tokenizer = load_embedding_model()
+    
+#     encodings = tokenizer.encode_batch(texts)
+#     input_ids = np.array([e.ids for e in encodings], dtype=np.int64)
+#     attention_mask = np.array([e.attention_mask for e in encodings], dtype=np.int64)
+#     token_type_ids = np.zeros_like(input_ids)
+
+#     outputs = session.run(
+#         None,
+#         {
+#             "input_ids": input_ids,
+#             "attention_mask": attention_mask,
+#             "token_type_ids": token_type_ids,
+#         },
+#     )
+
+#     vecs = _pool_and_normalize(outputs[0])
+#     return [v.tolist() for v in vecs]
+
+# # ============================================================
+# # PUBLIC API
+# # ============================================================
+# def create_embedding(text: str) -> List[float]:
+#     if not text or not text.strip():
+#         text = " "
+#     cached = _cache_get(text)
+#     if cached is not None:
+#         return cached
+#     vec = _encode_batch([text])[0]
+#     _cache_set(text, vec)
+#     return vec
+
+# def create_embeddings(texts: List[str]) -> List[List[float]]:
+#     if not texts:
+#         return []
+#     normalized = [t if t and t.strip() else " " for t in texts]
+#     results: List[Optional[List[float]]] = [None] * len(normalized)
+#     miss_idx: List[int] = []
+#     miss_txt: List[str] = []
+
+#     for i, t in enumerate(normalized):
+#         hit = _cache_get(t)
+#         if hit is not None:
+#             results[i] = hit
+#         else:
+#             miss_idx.append(i)
+#             miss_txt.append(t)
+
+#     if miss_txt:
+#         vecs = _encode_batch(miss_txt)
+#         for j, vec in zip(miss_idx, vecs):
+#             results[j] = vec
+#             _cache_set(normalized[j], vec)
+
+#     return results  # type: ignore
 """
-Local embedding service via ONNX Runtime + INT8 quantized bge-base-en-v1.5.
-Optimized for 1GB RAM limits on Streamlit Cloud.
+Local embedding service via FastEmbed (Qdrant).
+Runs ONNX on CPU — no API, no rate limits, no external calls.
 """
 import os
 import json
@@ -445,23 +605,17 @@ import hashlib
 import logging
 from typing import List, Optional
 
-import numpy as np
-import onnxruntime as ort
 import redis
 import streamlit as st
 from dotenv import load_dotenv
-from huggingface_hub import hf_hub_download
-from tokenizers import Tokenizer
+from fastembed import TextEmbedding
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-MODEL_REPO = "Xenova/bge-base-en-v1.5"
-TOKENIZER_REPO = "BAAI/bge-base-en-v1.5"
-ONNX_FILENAME = "onnx/model_int8.onnx"
-TOKENIZER_FILENAME = "tokenizer.json"
-MAX_LEN = 512
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBED_DIM = 384
 
 # ============================================================
 # REDIS CACHE
@@ -480,11 +634,12 @@ except Exception:
     _redis = None
 
 def _cache_key(text: str) -> str:
-    h = hashlib.sha256(f"{MODEL_REPO}:{text}".encode("utf-8")).hexdigest()
+    h = hashlib.sha256(f"{MODEL_NAME}:{text}".encode("utf-8")).hexdigest()
     return f"emb:{h}"
 
 def _cache_get(text: str) -> Optional[List[float]]:
-    if not _redis: return None
+    if not _redis:
+        return None
     try:
         val = _redis.get(_cache_key(text))
         return json.loads(val) if val else None
@@ -492,72 +647,25 @@ def _cache_get(text: str) -> Optional[List[float]]:
         return None
 
 def _cache_set(text: str, vec: List[float]) -> None:
-    if not _redis: return
+    if not _redis:
+        return
     try:
         _redis.setex(_cache_key(text), 60 * 60 * 24 * 30, json.dumps(vec))
     except Exception:
         pass
 
 # ============================================================
-# LAZY MODEL LOADING WITH STRICT MEMORY CAPS
+# MODEL (lazy-loaded once per session)
 # ============================================================
-@st.cache_resource(show_spinner="Waking up embedding engine... (first run only)")
-def load_embedding_model():
-    logger.info("Downloading/loading ONNX model...")
-    
-    # 1. Download files (Passes token if available in env)
-    hf_token = os.getenv("HF_TOKEN")
-    onnx_path = hf_hub_download(repo_id=MODEL_REPO, filename=ONNX_FILENAME, token=hf_token)
-    tokenizer_path = hf_hub_download(repo_id=TOKENIZER_REPO, filename=TOKENIZER_FILENAME, token=hf_token)
+@st.cache_resource(show_spinner="Loading embedding model (first run only)...")
+def _load_model() -> TextEmbedding:
+    logger.info("Loading FastEmbed model: %s", MODEL_NAME)
+    return TextEmbedding(model_name=MODEL_NAME)
 
-    # 2. STRICT MEMORY LIMITS FOR STREAMLIT CLOUD
-    sess_options = ort.SessionOptions()
-    sess_options.enable_cpu_mem_arena = False          # Stop hoarding memory
-    sess_options.intra_op_num_threads = 1              # Restrict to 1 thread
-    sess_options.inter_op_num_threads = 1              # Restrict to 1 thread
-    sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    
-    session = ort.InferenceSession(
-        onnx_path, 
-        sess_options=sess_options, 
-        providers=["CPUExecutionProvider"]
-    )
-
-    # 3. Load tokenizer
-    tokenizer = Tokenizer.from_file(tokenizer_path)
-    tokenizer.enable_padding(pad_id=0, pad_token="[PAD]")
-    tokenizer.enable_truncation(max_length=MAX_LEN)
-
-    return session, tokenizer
-
-# ============================================================
-# INFERENCE
-# ============================================================
-def _pool_and_normalize(hidden_state: np.ndarray) -> np.ndarray:
-    cls = hidden_state[:, 0, :]
-    norms = np.linalg.norm(cls, axis=1, keepdims=True)
-    return cls / np.clip(norms, 1e-9, None)
-
-def _encode_batch(texts: List[str]) -> List[List[float]]:
-    # LAZY LOAD: We only fetch the model when requested
-    session, tokenizer = load_embedding_model()
-    
-    encodings = tokenizer.encode_batch(texts)
-    input_ids = np.array([e.ids for e in encodings], dtype=np.int64)
-    attention_mask = np.array([e.attention_mask for e in encodings], dtype=np.int64)
-    token_type_ids = np.zeros_like(input_ids)
-
-    outputs = session.run(
-        None,
-        {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-        },
-    )
-
-    vecs = _pool_and_normalize(outputs[0])
-    return [v.tolist() for v in vecs]
+def _embed_batch(texts: List[str]) -> List[List[float]]:
+    model = _load_model()
+    vectors = list(model.embed(texts))
+    return [v.tolist() for v in vectors]
 
 # ============================================================
 # PUBLIC API
@@ -568,7 +676,7 @@ def create_embedding(text: str) -> List[float]:
     cached = _cache_get(text)
     if cached is not None:
         return cached
-    vec = _encode_batch([text])[0]
+    vec = _embed_batch([text])[0]
     _cache_set(text, vec)
     return vec
 
@@ -576,6 +684,7 @@ def create_embeddings(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
     normalized = [t if t and t.strip() else " " for t in texts]
+
     results: List[Optional[List[float]]] = [None] * len(normalized)
     miss_idx: List[int] = []
     miss_txt: List[str] = []
@@ -589,7 +698,7 @@ def create_embeddings(texts: List[str]) -> List[List[float]]:
             miss_txt.append(t)
 
     if miss_txt:
-        vecs = _encode_batch(miss_txt)
+        vecs = _embed_batch(miss_txt)
         for j, vec in zip(miss_idx, vecs):
             results[j] = vec
             _cache_set(normalized[j], vec)

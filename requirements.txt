@@ -1,3 +1,4 @@
+
 streamlit
 redis
 pypdf
@@ -5,9 +6,5 @@ sqlalchemy
 psycopg2-binary
 pgvector
 python-dotenv
-onnxruntime
-tokenizers
-huggingface_hub
-numpy
-pdfplumber
-groq
+google-genai
+fastembed
