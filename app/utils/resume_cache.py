@@ -150,7 +150,7 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6380")
 
 CACHE_TTL = 60 * 60 * 24 * 60
-MODEL_VERSION = "gemini-2.5-flash"
+MODEL_VERSION = "gemini-3.6-flash"  # or "models/gemini-3.6-flash" depending on SDK method
 PROMPT_VERSION = "resume_extract_v2"
 
 # Safe Redis initialization with graceful fallback
