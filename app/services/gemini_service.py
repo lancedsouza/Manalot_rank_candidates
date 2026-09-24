@@ -523,47 +523,117 @@
 #     # If all models fail, raise an informative error
 #     raise RuntimeError(f"All Gemini text generation models exhausted retries: {last_exception}")
 
+# """
+# Gemini service wrapper for structured response generation.
+# Handles primary and fallback models with automatic retry logic.
+# """
+
+# import os
+# import logging
+# from dotenv import load_dotenv
+# from google import genai
+# from google.genai import types
+
+# load_dotenv()
+# logger = logging.getLogger(__name__)
+
+# def generate_structured_response(prompt: str, schema):
+#     """
+#     Generates structured JSON responses conforming to a Pydantic schema using Gemini.
+#     Automatically falls back to lighter models if primary models experience high demand.
+#     """
+#     api_key = os.getenv("GEMINI_API_KEY")
+#     client = genai.Client(api_key=api_key)
+    
+#     # Primary workhorse model and reliable fallback option
+#     models_to_try = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+    
+#     last_exception = None
+#     for model_name in models_to_try:
+#         try:
+#             logger.info(f"Attempting structured generation with model: {model_name}")
+#             response = client.models.generate_content(
+#                 model=model_name,
+#                 contents=prompt,
+#                 config=types.GenerateContentConfig(
+#                     response_mime_type="application/json",
+#                     response_schema=schema,
+#                 ),
+#             )
+#             return response
+#         except Exception as e:
+#             logger.warning(f"Server error on {model_name}: {e}")
+#             last_exception = e
+#             continue
+            
+#     raise RuntimeError(f"All Gemini text generation models exhausted retries: {last_exception}")
+
 """
-Gemini service wrapper for structured response generation.
-Handles primary and fallback models with automatic retry logic.
+Groq-powered structured response generation service.
+Replaces Gemini to bypass free-tier rate limits and 404 errors.
 """
 
 import os
+import json
 import logging
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from groq import Groq
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 def generate_structured_response(prompt: str, schema):
     """
-    Generates structured JSON responses conforming to a Pydantic schema using Gemini.
-    Automatically falls back to lighter models if primary models experience high demand.
+    Generates structured JSON responses conforming to a Pydantic schema using Groq's 
+    blazing-fast Llama models with JSON mode.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY environment variable is missing. Please add it to your .env file.")
+
+    # Initialize the Groq client
+    client = Groq(api_key=api_key)
     
-    # Primary workhorse model and reliable fallback option
-    models_to_try = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+    # Use high-performance Llama 3.3 model on Groq
+    model_name = "llama-3.3-70b-versatile"
     
-    last_exception = None
-    for model_name in models_to_try:
-        try:
-            logger.info(f"Attempting structured generation with model: {model_name}")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                ),
-            )
-            return response
-        except Exception as e:
-            logger.warning(f"Server error on {model_name}: {e}")
-            last_exception = e
-            continue
-            
-    raise RuntimeError(f"All Gemini text generation models exhausted retries: {last_exception}")
+    # Dynamically extract the Pydantic schema and inject it into the system prompt
+    # This guarantees the open-weights model perfectly formats the JSON keys
+    schema_json_str = json.dumps(schema.model_json_schema(), indent=2)
+    system_prompt = (
+        "You are an expert HR data parsing system. "
+        "Extract the required details from the text and output ONLY valid JSON "
+        "that strictly matches the following JSON schema structure:\n"
+        f"{schema_json_str}"
+    )
+
+    try:
+        logger.info(f"Attempting structured generation via Groq with model: {model_name}")
+        
+        # Call Groq with JSON Object mode enforced
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,  # Low temperature for highly deterministic data extraction
+        )
+        
+        raw_content = completion.choices[0].message.content
+        parsed_dict = json.loads(raw_content)
+        
+        # Validate the dictionary strictly against your Pydantic schema
+        validated_instance = schema.model_validate(parsed_dict)
+        
+        # Wrap it in a dummy object mimicking the structure expected by your downstream extractors (response.parsed)
+        class GroqResponseWrapper:
+            def __init__(self, parsed_data):
+                self.parsed = parsed_data
+
+        return GroqResponseWrapper(validated_instance)
+
+    except Exception as e:
+        logger.exception(f"Groq generation failed: {e}")
+        raise RuntimeError(f"Groq API error: {e}")

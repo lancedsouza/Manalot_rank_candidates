@@ -11,3 +11,4 @@ tokenizers
 huggingface_hub
 numpy
 pdfplumber
+groq
