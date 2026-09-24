@@ -356,7 +356,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Ordered: most generous quota first
 MODELS = [
-    "gemini-2.0-flash",          # ~200/day free
+    "gemini-3.6-flash-flash",          # ~200/day free
     "gemini-2.5-flash-lite",     # ~200/day free
     "gemini-2.5-flash",          # 20/day free
 ]
