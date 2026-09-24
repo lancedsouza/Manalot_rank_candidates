@@ -10,3 +10,4 @@ onnxruntime
 tokenizers
 huggingface_hub
 numpy
+pdfplumber
