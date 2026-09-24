@@ -437,7 +437,7 @@
 
 """
 Local embedding service via ONNX Runtime + INT8 quantized bge-base-en-v1.5.
-Optimized for 1GB RAM limits on Streamlit Cloud using Lazy Loading and Thread Caps.
+Optimized for 1GB RAM limits on Streamlit Cloud.
 """
 import os
 import json
@@ -499,21 +499,23 @@ def _cache_set(text: str, vec: List[float]) -> None:
         pass
 
 # ============================================================
-# LAZY MODEL LOADING (Only runs when an embedding is requested)
+# LAZY MODEL LOADING WITH STRICT MEMORY CAPS
 # ============================================================
-@st.cache_resource(show_spinner="Downloading ONNX Model (~110MB)... This will only happen once.")
+@st.cache_resource(show_spinner="Waking up embedding engine... (first run only)")
 def load_embedding_model():
     logger.info("Downloading/loading ONNX model...")
     
-    # 1. Download files
-    onnx_path = hf_hub_download(repo_id=MODEL_REPO, filename=ONNX_FILENAME)
-    tokenizer_path = hf_hub_download(repo_id=TOKENIZER_REPO, filename=TOKENIZER_FILENAME)
+    # 1. Download files (Passes token if available in env)
+    hf_token = os.getenv("HF_TOKEN")
+    onnx_path = hf_hub_download(repo_id=MODEL_REPO, filename=ONNX_FILENAME, token=hf_token)
+    tokenizer_path = hf_hub_download(repo_id=TOKENIZER_REPO, filename=TOKENIZER_FILENAME, token=hf_token)
 
     # 2. STRICT MEMORY LIMITS FOR STREAMLIT CLOUD
-    # Prevents ONNX from spawning too many threads and causing an Out-Of-Memory (OOM) crash
     sess_options = ort.SessionOptions()
-    sess_options.intra_op_num_threads = 1
-    sess_options.inter_op_num_threads = 1
+    sess_options.enable_cpu_mem_arena = False          # Stop hoarding memory
+    sess_options.intra_op_num_threads = 1              # Restrict to 1 thread
+    sess_options.inter_op_num_threads = 1              # Restrict to 1 thread
+    sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     
     session = ort.InferenceSession(
         onnx_path, 
@@ -537,7 +539,7 @@ def _pool_and_normalize(hidden_state: np.ndarray) -> np.ndarray:
     return cls / np.clip(norms, 1e-9, None)
 
 def _encode_batch(texts: List[str]) -> List[List[float]]:
-    # LAZY LOAD: We only fetch the model from Streamlit cache when actually needed
+    # LAZY LOAD: We only fetch the model when requested
     session, tokenizer = load_embedding_model()
     
     encodings = tokenizer.encode_batch(texts)
