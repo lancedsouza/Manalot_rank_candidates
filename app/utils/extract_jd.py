@@ -232,15 +232,118 @@
 #     _cache_structured_jd(text, parsed_data)
 
 #     return parsed_data
+# """
+# LLM-based JD extractor with Redis caching.
+
+# Mirrors the resume extraction path in `app/utils/resume_cache.py`:
+#   - Cache keyed by SHA-256 of the JD text
+#   - Structured response using JDRequirements schema via gemini_service
+#   - Redis TTL = 7 days
+
+# Reads REDIS_URL from environment so it works both locally and on Streamlit Cloud.
+# """
+
+# import os
+# import hashlib
+# import logging
+
+# import redis
+# from dotenv import load_dotenv
+
+# from app.services.gemini_service import generate_structured_response
+# from app.pydantic_models.jd_pydantic_models import JDRequirements
+
+# load_dotenv()
+
+# logger = logging.getLogger(__name__)
+
+# REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+# CACHE_TTL = 60 * 60 * 24 * 7  # 7 days
+
+# # Safe Redis init with graceful fallback
+# redis_client = None
+# try:
+#     client = redis.Redis.from_url(
+#         REDIS_URL,
+#         decode_responses=True,
+#         socket_connect_timeout=2,
+#     )
+#     client.ping()
+#     redis_client = client
+#     logger.info("JD extractor: connected to Redis at %s", REDIS_URL)
+# except Exception:
+#     logger.warning("JD extractor: Redis unavailable — running without cache.")
+
+
+# # ============================================================
+# # CACHE HELPERS
+# # ============================================================
+# def get_cache_key(text: str) -> str:
+#     hash_object = hashlib.sha256(text.encode("utf-8"))
+#     return f"jd_cache:{hash_object.hexdigest()}"
+
+
+# def get_cached_structured_jd(text: str) -> JDRequirements | None:
+#     if not redis_client:
+#         return None
+#     try:
+#         cache_key = get_cache_key(text)
+#         cached_data = redis_client.get(cache_key)
+#         if cached_data:
+#             logger.info("[CACHE HIT] Retrieved parsed JD from Redis.")
+#             return JDRequirements.model_validate_json(cached_data)
+#     except Exception:
+#         logger.exception("Invalid cached JD")
+#     logger.info("[CACHE MISS] No cached record found.")
+#     return None
+
+
+# def _cache_structured_jd(text: str, jd: JDRequirements) -> None:
+#     if not redis_client:
+#         return
+#     try:
+#         cache_key = get_cache_key(text)
+#         redis_client.setex(cache_key, CACHE_TTL, jd.model_dump_json())
+#         logger.info("[CACHE SET] Saved parsed JD response to Redis.")
+#     except Exception:
+#         logger.exception("Failed to cache JD")
+
+
+# # ============================================================
+# # LLM EXTRACTION
+# # ============================================================
+# def extract_structured_jd(text: str) -> JDRequirements:
+#     """LLM extraction of structured JD fields. Redis-cached."""
+#     cached = get_cached_structured_jd(text)
+#     if cached:
+#         return cached
+
+#     prompt = f"""Extract from the job description (JD) all the required pydantic fields:
+#     1. Skills required by the employer
+#     2. Responsibilities mentioned in the JD
+#     3. Education mentioned in the JD (e.g., MBA, etc.)
+#     4. Industries the employer prefers (e.g., Finance, etc.)
+
+#     Job Description Content:
+#     {text}
+#     """
+
+#     response = generate_structured_response(
+#         prompt=prompt,
+#         schema=JDRequirements,
+#     )
+
+#     parsed_data: JDRequirements = response.parsed
+
+#     _cache_structured_jd(text, parsed_data)
+
+#     return parsed_data
 """
 LLM-based JD extractor with Redis caching.
-
-Mirrors the resume extraction path in `app/utils/resume_cache.py`:
+Mirrors the resume extraction path:
   - Cache keyed by SHA-256 of the JD text
   - Structured response using JDRequirements schema via gemini_service
   - Redis TTL = 7 days
-
-Reads REDIS_URL from environment so it works both locally and on Streamlit Cloud.
 """
 
 import os
@@ -275,9 +378,6 @@ except Exception:
     logger.warning("JD extractor: Redis unavailable — running without cache.")
 
 
-# ============================================================
-# CACHE HELPERS
-# ============================================================
 def get_cache_key(text: str) -> str:
     hash_object = hashlib.sha256(text.encode("utf-8"))
     return f"jd_cache:{hash_object.hexdigest()}"
@@ -309,9 +409,6 @@ def _cache_structured_jd(text: str, jd: JDRequirements) -> None:
         logger.exception("Failed to cache JD")
 
 
-# ============================================================
-# LLM EXTRACTION
-# ============================================================
 def extract_structured_jd(text: str) -> JDRequirements:
     """LLM extraction of structured JD fields. Redis-cached."""
     cached = get_cached_structured_jd(text)
@@ -334,7 +431,6 @@ def extract_structured_jd(text: str) -> JDRequirements:
     )
 
     parsed_data: JDRequirements = response.parsed
-
     _cache_structured_jd(text, parsed_data)
 
     return parsed_data

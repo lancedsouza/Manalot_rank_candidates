@@ -477,6 +477,52 @@
 #         "All Gemini models are rate-limited. Try again later."
 #     ) from last_error
 
+# """
+# Gemini service wrapper for structured response generation.
+# Handles primary and fallback models with automatic retry logic.
+# """
+
+# import os
+# import logging
+# from dotenv import load_dotenv
+# from google import genai
+# from google.genai import types
+
+# load_dotenv()
+# logger = logging.getLogger(__name__)
+
+# def generate_structured_response(prompt: str, schema):
+#     """
+#     Generates structured JSON responses conforming to a Pydantic schema using Gemini.
+#     Automatically falls back to lighter models if primary models experience high demand.
+#     """
+#     api_key = os.getenv("GEMINI_API_KEY")
+#     client = genai.Client(api_key=api_key)
+    
+#     # Primary workhorse model and reliable fallback option
+#     models_to_try = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+    
+#     last_exception = None
+#     for model_name in models_to_try:
+#         try:
+#             logger.info(f"Attempting structured generation with model: {model_name}")
+#             response = client.models.generate_content(
+#                 model=model_name,
+#                 contents=prompt,
+#                 config=types.GenerateContentConfig(
+#                     response_mime_type="application/json",
+#                     response_schema=schema,
+#                 ),
+#             )
+#             return response
+#         except Exception as e:
+#             logger.warning(f"Server error on {model_name}: {e}")
+#             last_exception = e
+#             continue
+            
+#     # If all models fail, raise an informative error
+#     raise RuntimeError(f"All Gemini text generation models exhausted retries: {last_exception}")
+
 """
 Gemini service wrapper for structured response generation.
 Handles primary and fallback models with automatic retry logic.
@@ -520,5 +566,4 @@ def generate_structured_response(prompt: str, schema):
             last_exception = e
             continue
             
-    # If all models fail, raise an informative error
     raise RuntimeError(f"All Gemini text generation models exhausted retries: {last_exception}")
