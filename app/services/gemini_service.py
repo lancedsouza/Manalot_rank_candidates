@@ -595,7 +595,7 @@ def generate_structured_response(prompt: str, schema):
     client = Groq(api_key=api_key)
     
     # Use high-performance Llama 3.3 model on Groq
-    model_name = "llama-3.3-70b-versatile"
+    model_name = "llama-3.1-8b-instant"
     
     # Dynamically extract the Pydantic schema and inject it into the system prompt
     # This guarantees the open-weights model perfectly formats the JSON keys
