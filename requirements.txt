@@ -1,4 +1,4 @@
-
+fastapi
 streamlit
 redis
 pypdf
@@ -10,3 +10,4 @@ google-genai
 fastembed
 pdfplumber
 groq
+celery
