@@ -26,7 +26,7 @@ celery_app.conf.update(
     timezone='Asia/Kolkata',  # Set to your local time
 )
 
-@celery_app.task(bind=True, name="process_resume")
+@celery_app.task(bind=True, name="process_resume",rate_limit="20/m")
 def process_resume_task(self, file_path: str):
     """Background worker that runs the LLM pipeline."""
     path_obj = Path(file_path)

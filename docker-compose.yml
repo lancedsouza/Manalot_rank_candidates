@@ -1,54 +1,95 @@
+# services:
+
+#   postgres:
+#     image: pgvector/pgvector:pg16
+#     container_name: recruitai-postgres
+#     restart: unless-stopped
+
+#     environment:
+#       POSTGRES_DB: recruitai
+#       POSTGRES_USER: recruitai
+#       POSTGRES_PASSWORD: recruitai_password
+
+#     ports:
+#       - "5431:5432"
+
+#     volumes:
+#       - recruitai_postgres_data:/var/lib/postgresql/data
+
+
+#   ollama:
+#     image: ollama/ollama:latest
+#     container_name: recruitai-ollama
+#     restart: unless-stopped
+
+#     ports:
+#       - "11434:11434"
+
+#     volumes:
+#       - ollama_data:/root/.ollama
+
+
+#   redis:
+#     image: redis:alpine
+#     container_name: recruitai-redis
+#     restart: unless-stopped
+
+#     ports:
+#       - "6380:6379"
+
+#     volumes:
+#       - recruitai_redis_data:/data
+
+
+#   backup-service:
+#     image: alpine
+
+#     volumes:
+#       - ollama_data:/backup_source:ro
+
+
+# volumes:
+#   recruitai_postgres_data:
+#   ollama_data:
+#   recruitai_redis_data:
+
+version: '3.8'
+
 services:
-
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: recruitai-postgres
-    restart: unless-stopped
-
-    environment:
-      POSTGRES_DB: recruitai
-      POSTGRES_USER: recruitai
-      POSTGRES_PASSWORD: recruitai_password
-
+  # 1. The FastAPI Backend
+  api:
+    build: .
+    container_name: ats_api
+    command: uvicorn backend_api:app --host 0.0.0.0 --port 8000
     ports:
-      - "5431:5432"
-
+      - "8000:8000"
+    env_file:
+      - .env
     volumes:
-      - recruitai_postgres_data:/var/lib/postgresql/data
+      - .:/app  # Live code reloading
 
+  # 2. The Celery AI Worker
+  worker:
+    build: .
+    container_name: ats_worker
+    command: celery -A worker worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - api
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: recruitai-ollama
-    restart: unless-stopped
-
+  # 3. The Streamlit Frontend
+  frontend:
+    build: .
+    container_name: ats_frontend
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
     ports:
-      - "11434:11434"
-
+      - "8501:8501"
+    env_file:
+      - .env
     volumes:
-      - ollama_data:/root/.ollama
-
-
-  redis:
-    image: redis:alpine
-    container_name: recruitai-redis
-    restart: unless-stopped
-
-    ports:
-      - "6380:6379"
-
-    volumes:
-      - recruitai_redis_data:/data
-
-
-  backup-service:
-    image: alpine
-
-    volumes:
-      - ollama_data:/backup_source:ro
-
-
-volumes:
-  recruitai_postgres_data:
-  ollama_data:
-  recruitai_redis_data:
+      - .:/app
+    depends_on:
+      - api
