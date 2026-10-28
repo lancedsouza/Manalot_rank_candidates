@@ -12,8 +12,23 @@ Help a recruiter shortlist candidates for a job description (JD): upload a JD PD
 - Offline scripts: `app/services/rank_candidates.py` CLI, `app/utils/clear_all.py`, `clear_stale.py`, `768_migrate.py`, `app/database/create_tables.py`.
 - Ad-hoc scripts named `test_*.py` under `app/` (they call live services; they are not tests).
 
+## Flow states
+
+Per `transition.md` ("Steady state"), a flow is steady once its characterisation tests pass and every issue found is logged. Set 2026-10-29.
+
+| Flow | State | Why |
+| --- | --- | --- |
+| FLOW-01 | steady | Characterisation passes; ISS-10..13 fixed |
+| FLOW-02 | steady | Characterisation passes; ISS-21..26 logged (ISS-20 pg hardening open) |
+| FLOW-03 | steady | Characterisation passes, including the pg test on local pgvector |
+| FLOW-04 | takeover | No characterisation tests yet (ISS-40 blocks its slices) |
+| FLOW-05 | takeover | No characterisation tests yet (ISS-50 blocks its slices) |
+| FLOW-06 | steady | Characterisation passes; ISS-60, ISS-61 logged |
+
+The takeover finishes when FLOW-04 and FLOW-05 are steady. Slice Owner parallelism stays at 1 until the first release (no deploy pipeline yet, ISS-02).
+
 ## FLOW-01 Upload and embed a job description
-State: takeover
+State: steady
 What it does: a recruiter uploads a JD PDF; if identical JD text is already stored, that row is reused; otherwise the text is LLM-extracted into `JDRequirements` (Redis-cached 7 days), embedded locally (bge-small, 384 dims) and stored in `jds` plus one `jd_skill` row per required skill.
 Acceptance criteria: REQ-001 to REQ-004 (see characterisation tests)
 Diagram: [FLOW-01](flows/web/upload-jd-flow.md)
@@ -21,7 +36,7 @@ Characterisation tests: tests/characterisation/test_upload_jd.py, test_embedding
 Known issues: none open. Fixed: ISS-10 (same JD text reuses its row), ISS-11 (per-field embeddings), ISS-12 (no debug prints), ISS-13 (one shared Redis URL default, `app/utils/redis_config.py`).
 
 ## FLOW-02 Ingest resumes for a requisition
-State: takeover
+State: steady
 What it does: resumes are queued via FastAPI to a Celery worker that warms the Redis resume cache; Streamlit then re-processes each file locally, upserts the candidate by name, stores skill embeddings and scores the application.
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
@@ -29,7 +44,7 @@ Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_se
 Known issues: candidates de-duplicated by name only; upload filename used unsanitised as a path; worker failures report as task SUCCESS; extraction runs twice when worker and UI use different Redis.
 
 ## FLOW-03 Score a candidate against a JD
-State: takeover
+State: steady
 What it does: hybrid = 0.20·parent cosine + 0.55·coverage (JD skills with best match ≥ 0.75) + 0.25·mean matched depth.
 Acceptance criteria: REQ-011, REQ-012
 Diagram: [FLOW-03](flows/web/score-candidate-flow.md)
@@ -53,7 +68,7 @@ Characterisation tests: none yet.
 Known issues: FLUSHALL also wipes the Celery broker and results; "Force Re-parse" checkbox is not wired.
 
 ## FLOW-06 Poll task status
-State: takeover
+State: steady
 What it does: `GET /api/v1/task/{id}` maps Celery state to Processing / Completed / Failed.
 Acceptance criteria: REQ-015
 Diagram: [FLOW-06](flows/api/task-status-flow.md)

@@ -14,7 +14,7 @@ Acceptance criteria:
 - <REQ-NNN> <observable, testable outcome>
 ```
 
-Usual chain per flow: `characterise` → first `slice` → later slices. A slice on a flow in takeover state is blocked by that flow's `characterise` issue.
+Usual chain per flow: `characterise` → first `slice` → later slices. A slice on a flow in takeover state is blocked by that flow's `characterise` issue. Completed issues move to `takeover/issues-done.md`.
 
 ## Cross-cutting (platform and questions)
 
@@ -63,57 +63,14 @@ Acceptance criteria:
 - REQ-109 gitleaks (all history), Semgrep and OSV-Scanner results are in `takeover/security.md`.
 - REQ-110 Any exposed key is listed for rotation before its first real use.
 
-### ISS-14 Postgres driver missing under SQLAlchemy 2.1
-Labels:       platform, flow:FLOW-01, module:deps
-Column:       In review (branch platform/iss-14)
-Blocked by:   none
-Finding:      `requirements.txt` is unpinned, so it installs SQLAlchemy 2.1.6, which uses the `psycopg` (v3) driver for a plain `postgresql://` URL. Only `psycopg2-binary` was listed, so `app/database/db.py` failed with `ModuleNotFoundError: psycopg`.
-Acceptance criteria:
-- REQ-139 `requirements.txt` includes `psycopg[binary]`, so a plain `postgresql://` URL connects.
-- REQ-140 `.env.example` documents every variable the live code reads.
-
 ## FLOW-01 Upload and embed a job description
-
-### ISS-10 JD can be embedded twice: duplicate check compares different titles
-Labels:       slice, flow:FLOW-01, module:streamlit
-Column:       In review (branch fix/flow-01)
-Blocked by:   ISS-02
-Finding:      `streamlit_app.py` hides "Embed" only when the filename-derived title is in `jds.title`, but `process_pdf_jd` stores the LLM title (`jd_processor.py`, step 3). The same PDF can create a second `jds` row.
-Acceptance criteria:
-- REQ-111 Uploading the same JD PDF twice creates one `jds` row.
-- REQ-112 The duplicate check uses the stored title or a content hash, not the filename.
-
-### ISS-11 Placeholder zero vectors stored for JD sub-embeddings
-Labels:       slice, flow:FLOW-01, module:jd-processor, risky
-Column:       In review (branch fix/flow-01)
-Blocked by:   ISS-04
-Finding:      `education_embedding`, `domain_embedding`, `industries_embedding` and both skill-list embeddings are `[0.0]*384`, and `responsibilities_embedding` copies the full JD embedding. A cosine search on them is meaningless. Characterised in `test_upload_jd.py`.
-Acceptance criteria:
-- REQ-113 Each sub-embedding is computed from its own field, or the column is null when the field is empty.
-- REQ-114 Characterisation expectation change approved by owner (risky PR).
-
-### ISS-12 Debug `print` of extracted JD content
-Labels:       slice, flow:FLOW-01, module:jd-processor
-Column:       In review (branch fix/flow-01)
-Blocked by:   ISS-02
-Finding:      `jd_processor.py` prints the title, skills and responsibilities to stdout ("remove once you've confirmed it works").
-Acceptance criteria:
-- REQ-115 Uses `logging` at DEBUG; nothing is printed at the default level.
-
-### ISS-13 Redis default port differs between caches
-Labels:       slice, flow:FLOW-01, module:cache
-Column:       In review (branch fix/flow-01)
-Blocked by:   ISS-02
-Finding:      `extract_jd.py` defaults `REDIS_URL` to :6379, while `resume_cache.py`, `embedding_service.py` and the UI default to :6380. Without the env var the JD cache silently goes offline.
-Acceptance criteria:
-- REQ-116 One shared Redis config; all caches use the same default.
 
 ## FLOW-02 Ingest resumes for a requisition
 
 ### ISS-20 Characterise FLOW-02 end to end against pgvector
 Labels:       characterise, flow:FLOW-02, module:resume-processor
-Column:       Ready
-Blocked by:   none
+Column:       Ready (hardening; no longer blocks FLOW-02 slices since FLOW-02 is steady)
+Blocked by:   ISS-02
 Finding:      Unit-level characterisation exists (`test_ingest_resumes_*.py`). It is not yet checked against a real Postgres + pgvector and the Celery round trip.
 Acceptance criteria:
 - REQ-117 `pg`-marked tests for `process_and_link_resume` run in CI against a pgvector service container.
@@ -121,7 +78,7 @@ Acceptance criteria:
 ### ISS-21 Path traversal through upload filename
 Labels:       slice, flow:FLOW-02, module:api, risky
 Column:       Backlog
-Blocked by:   ISS-20, ISS-01
+Blocked by:   ISS-01
 Finding:      `backend.py` writes to `temp_uploads / file.filename`. `resume_processor.py` and `jd_processor.py` do the same with `uploaded_file.name`. A name like `../../x.pdf` writes outside the folder, and concurrent uploads with the same name overwrite each other.
 Acceptance criteria:
 - REQ-118 Uploads are stored under a generated unique name inside `temp_uploads/`.
@@ -131,7 +88,7 @@ Acceptance criteria:
 ### ISS-22 Candidates de-duplicated by name only
 Labels:       slice, flow:FLOW-02, module:resume-processor, risky
 Column:       Backlog
-Blocked by:   ISS-20
+Blocked by:   none
 Finding:      `process_and_link_resume` updates any existing candidate with the same `name`. Two different people with the same name overwrite each other's data and applications.
 Acceptance criteria:
 - REQ-121 Identity uses the resume file hash (or another approved key); same-name, different-file resumes create two candidates.
@@ -139,7 +96,7 @@ Acceptance criteria:
 ### ISS-23 Worker failures report as task SUCCESS
 Labels:       slice, flow:FLOW-02, module:worker, risky
 Column:       Backlog
-Blocked by:   ISS-20
+Blocked by:   none
 Finding:      `worker.py` catches every exception and returns `{"status": "failed"}`, so Celery marks the task SUCCESS and the API answers "Completed". Characterised in `test_worker_failure_is_swallowed_into_result`.
 Acceptance criteria:
 - REQ-122 A pipeline failure makes `GET /task/{id}` return `"Failed"` with the error.
@@ -147,7 +104,7 @@ Acceptance criteria:
 ### ISS-24 Resume extracted twice: UI re-processes after the worker
 Labels:       slice, flow:FLOW-02, module:streamlit
 Column:       Backlog
-Blocked by:   ISS-20, ISS-23
+Blocked by:   ISS-23
 Finding:      After polling, Streamlit calls `process_and_link_resume` locally and relies on a Redis cache hit. If the worker and UI use different Redis instances, or the worker failed, the LLM runs again in the UI. Failed tasks are still linked.
 Acceptance criteria:
 - REQ-123 The UI links candidates from the task result and skips failed tasks.
@@ -156,7 +113,7 @@ Acceptance criteria:
 ### ISS-25 Polling loop has no timeout
 Labels:       slice, flow:FLOW-02, module:streamlit
 Column:       Backlog
-Blocked by:   ISS-20
+Blocked by:   none
 Finding:      `while pending_tasks:` in `streamlit_app.py` loops forever if a task stays PENDING (for example, an unknown id or a worker that is down).
 Acceptance criteria:
 - REQ-125 Polling stops after a configurable timeout and reports the files that timed out.
@@ -164,7 +121,7 @@ Acceptance criteria:
 ### ISS-26 Prompt injection from resume and JD text
 Labels:       slice, flow:FLOW-02, module:llm, risky
 Column:       Backlog
-Blocked by:   ISS-20, ISS-05
+Blocked by:   ISS-05
 Finding:      Raw PDF text is pasted into LLM prompts (`extract_jd.py`, `extract_resume.py`) with no delimiting or output sanity checks.
 Acceptance criteria:
 - REQ-126 Document text is delimited as data in the prompt.
@@ -256,10 +213,12 @@ Acceptance criteria:
 
 | Flow | Characterise | Slices | Questions | Platform |
 | --- | --- | --- | --- | --- |
-| Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05, ISS-14 |
-| FLOW-01 | (done in sweep) | ISS-10, 11, 12, 13 | – | – |
+| Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05 |
+| FLOW-01 | (done in sweep) | – (all done) | – | – |
 | FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26 | – | – |
 | FLOW-03 | ISS-30 | – | – | – |
 | FLOW-04 | ISS-40 | ISS-42 | ISS-41 | – |
 | FLOW-05 | ISS-50 | ISS-51, 52 | – | – |
 | FLOW-06 | (done in sweep) | ISS-60 | ISS-61 | – |
+
+Done: ISS-10, 11, 12, 13, 14 (see `takeover/issues-done.md`).
