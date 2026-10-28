@@ -1,18 +1,19 @@
-# FLOW-05 Cache maintenance
-
 ```mermaid
 zenuml
-    title FLOW-05 Cache maintenance
-    @Actor Recruiter
-    @Boundary Streamlit
-    @Database Redis
-    Recruiter->Streamlit.clearCache() {
-      Redis.FLUSHALL()
-      if(error) {
-        return sidebarError
-      }
-      return "Redis cache flushed!"
-    }
-```
+title FLOW-05 Cache maintenance
+@Actor Recruiter
+@Boundary UI as "Streamlit UI"
+@Database Redis as "Redis (cache, broker, results)"
 
-Note: the "Force Re-parse" checkbox is rendered but not wired — FLOW-02 always calls `process_and_link_resume(force_refresh=False)`.
+// Streamlit page: `http://localhost:8501` (docker-compose) or `:7860` (start.sh)
+// Force Re-parse checkbox is rendered but not wired to ingestion
+Recruiter->UI.clearCache() {
+  try {
+    // FLUSHALL also removes Celery queue and task results
+    Redis.flushall()
+    return "Redis cache flushed!"
+  } catch {
+    @return UI->Recruiter: sidebar error
+  }
+}
+```

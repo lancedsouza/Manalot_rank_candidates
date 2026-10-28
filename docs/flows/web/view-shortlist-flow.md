@@ -1,30 +1,37 @@
-# FLOW-04 View shortlist and skill evidence
-
 ```mermaid
 zenuml
-    title FLOW-04 View shortlist and skill evidence
-    @Actor Recruiter
-    @Boundary Streamlit
-    @Database Postgres
-    Recruiter->Streamlit.open() {
-      jds = Postgres.selectJds()
-      if(noJds) {
-        return "No Job Descriptions found"
+title FLOW-04 View shortlist and skill evidence
+@Actor Recruiter
+@Boundary UI as "Streamlit UI"
+@Database DB as "Postgres + pgvector"
+
+// Streamlit page: `http://localhost:8501` (docker-compose) or `:7860` (start.sh)
+Recruiter->UI.open() {
+  jds = DB.selectJds()
+  if("no JDs") {
+    @return UI->Recruiter: No Job Descriptions found
+  }
+  Recruiter->UI.selectJd(title, topN) {
+    ranked = DB.applicationsByHybridDesc(jdId, topN)
+    if("no applications") {
+      @return UI->Recruiter: No candidates have applied
+    }
+    loop("each ranked candidate") {
+      if("hybrid >= 80%") {
+        UI->UI: Top Tier badge
+      } else if("hybrid >= 65%") {
+        UI->UI: Strong badge
+      } else {
+        UI->UI: Moderate badge
       }
-      Recruiter->Streamlit.selectJd(title, topN 1..10) {
-        ranked = Postgres.applicationsByHybridDesc(jd_id, topN)
-        if(empty) {
-          return "No candidates have applied"
-        }
-        forEach(candidate) {
-          Streamlit.badge(>=80 Top, >=65 Strong, else Moderate)
-          cov = Postgres.coverage(threshold 0.75)
-          ev = Postgres.evidence(similarity >= 0.72, limit 10)
-          if(noEvidence) {
-            Streamlit.info("No primary skill evidence")
-          }
-        }
-        return shortlist
+      coverage = DB.coverage(jdId, candId)
+      // evidence threshold 0.72, coverage threshold 0.75
+      evidence = DB.evidence(jdId, candId)
+      if("no evidence rows") {
+        UI->Recruiter: No primary skill evidence
       }
     }
+    return shortlist
+  }
+}
 ```

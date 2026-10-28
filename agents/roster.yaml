@@ -18,7 +18,7 @@ agents:
     parallel: 1
     tools: [git, gh]
     skills: [superpowers/brainstorming, superpowers/writing-plans]
-    write_allow: [docs/prd.md, docs/flows/, takeover/survey.md]
+    write_allow: [docs/prd.md, docs/flows/, docs/architecture.md, takeover/survey.md]
     max_turns: 60
 
   - agent: qa
