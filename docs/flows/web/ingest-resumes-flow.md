@@ -20,7 +20,10 @@ Recruiter->UI.processResumes(pdfs, jdId) {
       if("filename not .pdf") {
         @return API->UI: 400 Only PDF files are supported
       }
-      API->API: save temp_uploads/filename
+      if("larger than 10 MB") {
+        @return API->UI: 413 File too large
+      }
+      API->API: save temp_uploads/uuid_sanitised-name
       API->Redis: process_resume_task.delay(path)
       return taskId
     }
@@ -41,23 +44,29 @@ Recruiter->UI.processResumes(pdfs, jdId) {
         Redis.setex(resumeCacheKey, ttl60d)
         return resume
       }
-      Worker->Redis: result "success, candidate"
+      Worker->Redis: SUCCESS with candidate
     } catch {
-      Worker->Redis: result "failed, error" (task still SUCCESS)
+      Worker->Redis: FAILURE with error
     } finally {
       Worker->Worker: delete temp file
     }
   }
-  while("tasks pending") {
-    // `GET http://localhost:8000/api/v1/task/{task_id}` every 2 s, no timeout
+  while("tasks pending and under 600 s") {
+    // `GET http://localhost:8000/api/v1/task/{task_id}` every 2 s
     status = API.taskStatus(taskId)
   }
-  loop("each uploaded PDF") {
-    linked = Proc.process_and_link_resume(session, pdf, jdId) {
+  if("deadline passed") {
+    UI->Recruiter: warning per timed-out file, not linked
+  }
+  loop("each completed task") {
+    if("task Failed") {
+      UI->Recruiter: error with worker message, skipped
+    }
+    // the worker's parsed resume is passed in, so the LLM is not called again
+    linked = Proc.process_and_link_resume(session, pdf, jdId, structuredResume) {
       if("no text extracted") {
         @return Proc->UI: ValueError, rollback
       }
-      resume = Cache.process_resume(path)
       vectors = Embed.create_embeddings(texts)
       if("candidate name exists") {
         DB->DB: update candidate, replace cand_skill rows

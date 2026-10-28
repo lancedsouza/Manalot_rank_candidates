@@ -152,7 +152,7 @@ REDIS_URL = redis_url()
 
 CACHE_TTL = 60 * 60 * 24 * 60
 MODEL_VERSION = "gemini-3.6-flash"  # or "models/gemini-3.6-flash" depending on SDK method
-PROMPT_VERSION = "resume_extract_v2"
+PROMPT_VERSION = "resume_extract_v3"  # v3: delimited resume text (ISS-26)
 
 # Safe Redis initialization with graceful fallback
 redis_client = None

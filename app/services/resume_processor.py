@@ -16,6 +16,7 @@ from app.services.extract_resume import extract_text
 from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
 from app.utils.redis_config import redis_url
+from app.utils.uploads import safe_upload_path
 
 EMBED_DIM = 384
 
@@ -141,10 +142,14 @@ def process_and_link_resume(
     uploaded_file,
     jd_id: int,
     force_refresh: bool = False,
+    structured_resume=None,
 ) -> tuple:
-    temp_dir = Path("temp_uploads")
-    temp_dir.mkdir(exist_ok=True)
-    temp_pdf_path = temp_dir / uploaded_file.name
+    """Upsert the candidate and score it for jd_id.
+
+    Pass structured_resume (e.g. from the worker's task result) to skip
+    LLM extraction entirely (ISS-24).
+    """
+    temp_pdf_path = safe_upload_path(uploaded_file.name)
 
     try:
         with open(temp_pdf_path, "wb") as f:
@@ -154,10 +159,10 @@ def process_and_link_resume(
         if not raw_text or not raw_text.strip():
             raise ValueError(f"Could not extract text from {uploaded_file.name}.")
 
-        if force_refresh:
-            _flush_cache_for_resume(temp_pdf_path)
-
-        structured_resume = process_resume(temp_pdf_path)
+        if structured_resume is None:
+            if force_refresh:
+                _flush_cache_for_resume(temp_pdf_path)
+            structured_resume = process_resume(temp_pdf_path)
         name = (
             structured_resume.name
             or os.path.splitext(uploaded_file.name)[0].replace("_", " ").title()

@@ -20,7 +20,7 @@ Usual chain per flow: `characterise` → first `slice` → later slices. A slice
 
 ### ISS-01 API cannot start: `backend_api:app` module does not exist
 Labels:       platform, flow:FLOW-02, module:deploy, risky
-Column:       Ready
+Column:       In review (branch fix/flow-02)
 Blocked by:   none
 Finding:      `start.sh:7` and `docker-compose.yml` run `uvicorn backend_api:app`, but the module is `backend.py`. FLOW-02 and FLOW-06 cannot run in Docker or on HF Spaces.
 Acceptance criteria:
@@ -77,7 +77,7 @@ Acceptance criteria:
 
 ### ISS-21 Path traversal through upload filename
 Labels:       slice, flow:FLOW-02, module:api, risky
-Column:       Backlog
+Column:       In review (branch fix/flow-02)
 Blocked by:   ISS-01
 Finding:      `backend.py` writes to `temp_uploads / file.filename`. `resume_processor.py` and `jd_processor.py` do the same with `uploaded_file.name`. A name like `../../x.pdf` writes outside the folder, and concurrent uploads with the same name overwrite each other.
 Acceptance criteria:
@@ -87,7 +87,7 @@ Acceptance criteria:
 
 ### ISS-22 Candidates de-duplicated by name only
 Labels:       slice, flow:FLOW-02, module:resume-processor, risky
-Column:       Backlog
+Column:       Needs you (schema decision: add `candidates.resume_hash` text UNIQUE and match on it; there is no migration tool yet, and `create_all` does not alter existing tables)
 Blocked by:   none
 Finding:      `process_and_link_resume` updates any existing candidate with the same `name`. Two different people with the same name overwrite each other's data and applications.
 Acceptance criteria:
@@ -95,7 +95,7 @@ Acceptance criteria:
 
 ### ISS-23 Worker failures report as task SUCCESS
 Labels:       slice, flow:FLOW-02, module:worker, risky
-Column:       Backlog
+Column:       In review (branch fix/flow-02)
 Blocked by:   none
 Finding:      `worker.py` catches every exception and returns `{"status": "failed"}`, so Celery marks the task SUCCESS and the API answers "Completed". Characterised in `test_worker_failure_is_swallowed_into_result`.
 Acceptance criteria:
@@ -103,7 +103,7 @@ Acceptance criteria:
 
 ### ISS-24 Resume extracted twice: UI re-processes after the worker
 Labels:       slice, flow:FLOW-02, module:streamlit
-Column:       Backlog
+Column:       In review (branch fix/flow-02)
 Blocked by:   ISS-23
 Finding:      After polling, Streamlit calls `process_and_link_resume` locally and relies on a Redis cache hit. If the worker and UI use different Redis instances, or the worker failed, the LLM runs again in the UI. Failed tasks are still linked.
 Acceptance criteria:
@@ -112,7 +112,7 @@ Acceptance criteria:
 
 ### ISS-25 Polling loop has no timeout
 Labels:       slice, flow:FLOW-02, module:streamlit
-Column:       Backlog
+Column:       In review (branch fix/flow-02)
 Blocked by:   none
 Finding:      `while pending_tasks:` in `streamlit_app.py` loops forever if a task stays PENDING (for example, an unknown id or a worker that is down).
 Acceptance criteria:
@@ -120,12 +120,21 @@ Acceptance criteria:
 
 ### ISS-26 Prompt injection from resume and JD text
 Labels:       slice, flow:FLOW-02, module:llm, risky
-Column:       Backlog
+Column:       In review (branch fix/flow-02)
 Blocked by:   ISS-05
 Finding:      Raw PDF text is pasted into LLM prompts (`extract_jd.py`, `extract_resume.py`) with no delimiting or output sanity checks.
 Acceptance criteria:
 - REQ-126 Document text is delimited as data in the prompt.
 - REQ-127 A resume containing "ignore previous instructions…" still yields schema-valid output (contract test with the fake).
+
+### ISS-27 Real resume extraction fails: Groq json_validate_failed
+Labels:       slice, flow:FLOW-02, module:llm, risky
+Column:       Ready
+Blocked by:   none
+Finding:      Found 2026-10-29 by a real run against Groq. `extract_resume_data` on `app/pdf/Manalot_Anup_Dubey.pdf` fails with `400 json_validate_failed`, `failed_generation: ''`. It is the same on `main` and on fix/flow-02 (not caused by the ISS-26 prompt change), and JD extraction works. The model (`openai/gpt-oss-20b`, JSON mode, no `max_tokens`) returns an empty generation for the long resume prompt. The old worker hid this by reporting failures as SUCCESS. `extract_resume.py` also prints the Pydantic schema to stdout.
+Acceptance criteria:
+- REQ-141 The four sample resumes extract successfully against the Groq sandbox (contract test, opt-in).
+- REQ-142 Extraction failures carry the provider error code in the task result.
 
 ## FLOW-03 Score a candidate against a JD
 
@@ -215,7 +224,7 @@ Acceptance criteria:
 | --- | --- | --- | --- | --- |
 | Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05 |
 | FLOW-01 | (done in sweep) | – (all done) | – | – |
-| FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26 | – | – |
+| FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26, 27 | – | – |
 | FLOW-03 | ISS-30 | – | – | – |
 | FLOW-04 | ISS-40 | ISS-42 | ISS-41 | – |
 | FLOW-05 | ISS-50 | ISS-51, 52 | – | – |

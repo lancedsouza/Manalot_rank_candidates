@@ -31,12 +31,10 @@ def process_resume_task(self, file_path: str):
     """Background worker that runs the LLM pipeline."""
     path_obj = Path(file_path)
     
+    # Errors propagate so Celery records FAILURE and the API reports "Failed" (ISS-23)
     try:
         resume_data = process_resume(path_obj)
         return {"status": "success", "candidate": resume_data.model_dump()}
-    
-    except Exception as e:
-        return {"status": "failed", "error": str(e)}
     finally:
         if path_obj.exists():
             path_obj.unlink()

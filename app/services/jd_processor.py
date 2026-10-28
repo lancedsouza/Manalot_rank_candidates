@@ -118,6 +118,7 @@ from app.database.jd_skill_table import Jd_Skill
 from app.services.extract_resume import extract_text       # PDF → text
 from app.utils.extract_jd import extract_structured_jd     # ← the LLM extractor
 from app.embedding.embedding_service import create_embeddings
+from app.utils.uploads import safe_upload_path
 
 EMBED_DIM = 384
 
@@ -131,9 +132,7 @@ def process_pdf_jd(session, uploaded_file):
     Uses the LLM extractor for skills/responsibilities/education/industries,
     then embeds everything in ONE batched call.
     """
-    temp_dir = Path("temp_uploads")
-    temp_dir.mkdir(exist_ok=True)
-    temp_pdf_path = temp_dir / uploaded_file.name
+    temp_pdf_path = safe_upload_path(uploaded_file.name)
 
     try:
         # Write the uploaded PDF to a temp file so extract_text can read it

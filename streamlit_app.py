@@ -866,12 +866,14 @@ from app.database.application_models import Application         # noqa: F401
 from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
 from app.utils.redis_config import redis_url
+from app.models.resume import Resume
 
 # Ensure tables exist
 Base.metadata.create_all(bind=engine)
 
 # FastAPI Server URL
 API_BASE_URL = "http://localhost:8000/api/v1"
+POLL_TIMEOUT_S = 600  # stop waiting for workers after 10 minutes (ISS-25)
 
 # ============================================================
 # PAGE CONFIG + STYLE
@@ -1056,36 +1058,47 @@ else:
                 except Exception as e:
                     st.error(f"Failed to queue {res_file.name}: {e}")
             
-            # Step 2: Poll the cluster until the LLM finishes heavy processing
-            pending_tasks = list(task_dict.values())
-            while pending_tasks:
-                status.info(f"AI Cluster is parsing resumes... ({len(pending_tasks)} remaining)")
-                for tid in pending_tasks[:]:
+            # Step 2: Poll until every task is done or the deadline passes (ISS-25)
+            results = {}
+            pending = dict(task_dict)  # filename -> task_id
+            deadline = time.monotonic() + POLL_TIMEOUT_S
+            while pending and time.monotonic() < deadline:
+                status.info(f"AI Cluster is parsing resumes... ({len(pending)} remaining)")
+                for name, tid in list(pending.items()):
                     try:
                         poll_resp = requests.get(f"{API_BASE_URL}/task/{tid}")
                         if poll_resp.status_code == 200:
-                            state = poll_resp.json().get("status")
-                            if state in ["Completed", "Failed"]:
-                                pending_tasks.remove(tid)
+                            body = poll_resp.json()
+                            if body.get("status") in ["Completed", "Failed"]:
+                                results[name] = body
+                                del pending[name]
                     except Exception:
                         pass
-                time.sleep(2) # Prevent spamming the API
-                
-            # Step 3: Fast DB Linking via Cache Hit
+                if pending:
+                    time.sleep(2)  # Prevent spamming the API
+            for name in pending:
+                st.warning(f"Timed out waiting for {name}; not linked.")
+
+            # Step 3: Link from the worker's result; no second LLM call (ISS-24)
             status.text("Background processing complete! Finalizing Requisition Links...")
             with get_db_session() as batch_session:
                 for idx, res_file in enumerate(uploaded_resumes):
+                    body = results.get(res_file.name)
+                    progress.progress((idx + 1) / len(uploaded_resumes))
+                    if body is None:
+                        continue
+                    if body.get("status") != "Completed":
+                        st.error(f"Failed on {res_file.name}: {body.get('error')}")
+                        continue
                     try:
-                        # Since Celery just populated Redis, this function returns instantly!
                         process_and_link_resume(
                             batch_session,
                             res_file,
                             selected_jd_id,
-                            force_refresh=False # Guarantee cache hit
+                            structured_resume=Resume.model_validate(body["result"]["candidate"]),
                         )
                     except Exception as e:
                         st.error(f"Failed on {res_file.name}: {e}")
-                    progress.progress((idx + 1) / len(uploaded_resumes))
 
             status.success("All resumes scored and linked successfully! Refreshing dashboard...")
             time.sleep(2)

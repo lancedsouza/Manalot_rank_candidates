@@ -15,7 +15,7 @@ def test_cache_key_is_sha256_model_and_prompt_version(tmp_path):
     p = _pdf(tmp_path)
     digest = hashlib.sha256(p.read_bytes()).hexdigest()
     assert resume_cache.generate_cache_key(p) == (
-        f"resume_extract:{digest}:gemini-3.6-flash:resume_extract_v2"
+        f"resume_extract:{digest}:gemini-3.6-flash:resume_extract_v3"  # v3: ISS-26
     )
 
 

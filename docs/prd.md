@@ -37,11 +37,11 @@ Known issues: none open. Fixed: ISS-10 (same JD text reuses its row), ISS-11 (pe
 
 ## FLOW-02 Ingest resumes for a requisition
 State: steady
-What it does: resumes are queued via FastAPI to a Celery worker that warms the Redis resume cache; Streamlit then re-processes each file locally, upserts the candidate by name, stores skill embeddings and scores the application.
+What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names and queued via FastAPI to a Celery worker that extracts them (Redis-cached). Streamlit polls for up to 600 s, then links each completed task's parsed resume without a second LLM call: it upserts the candidate by name, stores skill embeddings and scores the application.
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
-Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py
-Known issues: candidates de-duplicated by name only; upload filename used unsanitised as a path; worker failures report as task SUCCESS; extraction runs twice when worker and UI use different Redis.
+Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
+Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-27 (real Groq resume extraction fails with json_validate_failed). Fixed on fix/flow-02: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady

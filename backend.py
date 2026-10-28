@@ -1,9 +1,8 @@
 # backend_api.py
-import shutil
-from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from celery.result import AsyncResult
 from worker import process_resume_task
+from app.utils.uploads import MAX_UPLOAD_BYTES, safe_upload_path
 
 app = FastAPI(title="Manalot Talent Scout API", version="1.0")
 
@@ -14,12 +13,18 @@ async def process_resume_async(file: UploadFile = File(...)):
         
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    temp_dir = Path("temp_uploads")
-    temp_dir.mkdir(exist_ok=True)
-    temp_path = temp_dir / file.filename
+    temp_path = safe_upload_path(file.filename)
 
+    size = 0
     with temp_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        while chunk := file.file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                break
+            buffer.write(chunk)
+    if size > MAX_UPLOAD_BYTES:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
 
     # Dispatch to Redis queue. .delay() is non-blocking!
     task = process_resume_task.delay(str(temp_path))

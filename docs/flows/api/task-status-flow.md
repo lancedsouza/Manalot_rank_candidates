@@ -20,10 +20,9 @@ Client->API.get_task_status(task_id) {
     @return API->Client: status Processing...
   }
   if(state == SUCCESS) {
-    // worker.py catches pipeline errors, so a failed extraction also arrives here with result.status failed
     @return API->Client: status Completed, result
   }
-  // STARTED, RETRY and FAILURE all land here; error is str(task.info)
+  // FAILURE (worker errors now propagate), plus STARTED and RETRY; error is str(task.info)
   return "status Failed, error"
 }
 ```

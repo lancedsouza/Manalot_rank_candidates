@@ -28,8 +28,10 @@ def test_queues_pdf_and_returns_task_id(client, monkeypatch, tmp_path):
 
     assert r.status_code == 200
     assert r.json() == {"message": "Resume queued for processing.", "task_id": "task-123"}
-    assert sent == ["temp_uploads/CV.PDF"]
-    assert (tmp_path / "temp_uploads" / "CV.PDF").read_bytes() == b"%PDF"
+    # ISS-21 (owner-approved expectation change): unique, sanitised name inside temp_uploads/
+    (path,) = sent
+    assert path.startswith("temp_uploads/") and path.endswith("_CV.PDF")
+    assert (tmp_path / path).read_bytes() == b"%PDF"
 
 
 @pytest.mark.parametrize("state,info,result,expected", [
@@ -55,7 +57,8 @@ def test_worker_success_returns_candidate_and_deletes_file(monkeypatch, tmp_path
     assert not f.exists()
 
 
-def test_worker_failure_is_swallowed_into_result(monkeypatch, tmp_path):
+def test_worker_failure_marks_task_failed(monkeypatch, tmp_path):
+    # ISS-23 (owner-approved expectation change): errors propagate -> Celery FAILURE
     f = tmp_path / "cv.pdf"
     f.write_bytes(b"%PDF")
 
@@ -63,7 +66,7 @@ def test_worker_failure_is_swallowed_into_result(monkeypatch, tmp_path):
         raise RuntimeError("llm down")
 
     monkeypatch.setattr(worker, "process_resume", boom)
-    out = worker.process_resume_task.apply(args=[str(f)]).get()
+    res = worker.process_resume_task.apply(args=[str(f)])
 
-    assert out == {"status": "failed", "error": "llm down"}
+    assert res.state == "FAILURE" and str(res.result) == "llm down"
     assert not f.exists()
