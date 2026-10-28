@@ -1,0 +1,81 @@
+# Agent roster for the Manalot Rank Candidates takeover.
+# Source of truth for who may write where, which skills load, and run caps.
+# Owned by Platform. Changing this file is a risky PR (agent permissions).
+# Values in <angle brackets> are settled at kickoff.
+
+defaults:
+  usage_exit: 90%            # finish or revert the step, write scratchpad/<issue>.md, stop
+  repeat_stop: 3             # same failing command/edit 3x -> stop, move issue to Needs you
+  failed_runs_to_human: 2
+  read_deny: [.env, .env.*, .streamlit/secrets.toml]
+  network: [pypi.org, files.pythonhosted.org, github.com]
+  check_command: ./ci/check.sh
+  budget: <tokens or cost per run>
+
+agents:
+  - agent: planner
+    model: claude-opus-5-5
+    parallel: 1
+    tools: [git, gh]
+    skills: [superpowers/brainstorming, superpowers/writing-plans]
+    write_allow: [docs/prd.md, docs/flows/, takeover/survey.md]
+    max_turns: 60
+
+  - agent: qa
+    model: claude-sonnet-5-5
+    parallel: 1
+    tools: [git, gh, uv, pytest]
+    skills: [superpowers/test-driven-development, superpowers/verification-before-completion, playwright]
+    write_allow: [tests/characterisation/, takeover/test-health.md]
+    max_turns: 60
+
+  - agent: slice-owner
+    model: claude-sonnet-5-5
+    parallel: 1              # 3 once FLOW-01 is released
+    tools: [git, gh, uv, pytest, docker]
+    skills: [superpowers, feature-dev, frontend-design, ponytail]
+    write_deny: [tests/characterisation/, ci/, agents/, AGENTS.md, .github/, .claude/agents/]
+    max_turns: 80
+
+  - agent: reviewer
+    model: claude-opus-5-5
+    parallel: 3
+    tools: [git, gh]
+    skills: [code-review, feature-dev/code-reviewer, feature-dev/code-architect]
+    write_allow: []          # review comments only
+    max_turns: 30
+
+  - agent: security-reviewer
+    model: claude-opus-5-5
+    parallel: 1
+    tools: [git, gh, gitleaks, semgrep, osv-scanner]
+    skills: [security-review, code-review]
+    write_allow: [takeover/security.md, SECURITY.md]
+    max_turns: 30            # 60 for scans
+
+  - agent: platform
+    model: claude-sonnet-5-5
+    parallel: 1
+    tools: [git, gh, uv, docker, syft]
+    skills: [superpowers/verification-before-completion]
+    write_allow: [ci/, .github/, agents/, .claude/agents/, AGENTS.md, Dockerfile, docker-compose.yml, start.sh]
+    max_turns: 60
+
+# Paths where any change makes a PR risky (CODEOWNERS names the owner).
+risky_paths:
+  - app/database/            # schema, migrations, personal data (resumes)
+  - app/utils/768_migrate.py
+  - app/utils/clear_all.py
+  - app/utils/clear_stale.py
+  - app/services/gemini_service.py   # LLM provider (AI safety, fake-vs-real)
+  - app/services/extract_resume.py   # handles candidate PII
+  - app/utils/resume_cache.py        # cache keys over PII
+  - backend.py                       # public upload endpoint
+  - worker.py
+  - Dockerfile
+  - docker-compose.yml
+  - start.sh
+  - agents/
+  - .claude/agents/
+  - tests/characterisation/
+  - docs/adr/
