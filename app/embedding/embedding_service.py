@@ -599,7 +599,6 @@
 Local embedding service via FastEmbed (Qdrant).
 Runs ONNX on CPU — no API, no rate limits, no external calls.
 """
-import os
 import json
 import hashlib
 import logging

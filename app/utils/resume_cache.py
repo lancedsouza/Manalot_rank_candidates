@@ -136,7 +136,6 @@
 #         print(f"File name: {file.name}\n")
 #         print(resume)
 
-import os
 import hashlib
 import logging
 import redis

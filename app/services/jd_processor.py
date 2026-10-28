@@ -111,7 +111,6 @@ Job Description ingestion:
 """
 import logging
 import os
-from pathlib import Path
 
 from app.database.jd_models import JD
 from app.database.jd_skill_table import Jd_Skill
@@ -197,7 +196,7 @@ def process_pdf_jd(session, uploaded_file):
         jd_embedding = vectors[0]
         n_skills = len(required_skills)
         skill_vectors = vectors[1:1 + n_skills]
-        field_vecs = dict(zip(present, vectors[1 + n_skills:]))
+        field_vecs = dict(zip(present, vectors[1 + n_skills:], strict=True))
 
         # education_embedding is NOT NULL in the schema; keep a zero vector when empty
         zero_vec = [0.0] * EMBED_DIM
@@ -224,7 +223,7 @@ def process_pdf_jd(session, uploaded_file):
         jd_id = new_jd.id
 
         # 6. Persist individual skill embeddings
-        for skill, vec in zip(required_skills, skill_vectors):
+        for skill, vec in zip(required_skills, skill_vectors, strict=True):
             session.add(
                 Jd_Skill(
                     jd_id=jd_id,
