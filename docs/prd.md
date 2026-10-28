@@ -41,7 +41,7 @@ What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names an
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
-Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-27 (Groq resume extraction failed; fix on fix/iss-27), ISS-28 (resume data printed to stdout). Fixed on fix/flow-02: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26.
+Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-28 (resume data printed to stdout). Fixed: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady
@@ -73,4 +73,4 @@ What it does: `GET /api/v1/task/{id}` maps Celery state to Processing / Complete
 Acceptance criteria: REQ-015
 Diagram: [FLOW-06](flows/api/task-status-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_api.py
-Known issues: STARTED/RETRY reported as Failed; unknown IDs report Processing forever.
+Known issues: ISS-60 (STARTED/RETRY reported as Failed; unknown IDs report Processing forever), ISS-61 (no auth). Worker failures now report Failed (ISS-23).

@@ -18,15 +18,6 @@ Usual chain per flow: `characterise` → first `slice` → later slices. A slice
 
 ## Cross-cutting (platform and questions)
 
-### ISS-01 API cannot start: `backend_api:app` module does not exist
-Labels:       platform, flow:FLOW-02, module:deploy, risky
-Column:       In review (branch fix/flow-02)
-Blocked by:   none
-Finding:      `start.sh:7` and `docker-compose.yml` run `uvicorn backend_api:app`, but the module is `backend.py`. FLOW-02 and FLOW-06 cannot run in Docker or on HF Spaces.
-Acceptance criteria:
-- REQ-101 `docker compose up api` serves `GET /docs` with 200.
-- REQ-102 `start.sh` starts the API on :8000.
-
 ### ISS-02 CI, pinned toolchain and ratchet baselines
 Labels:       platform, flow:FLOW-01, module:ci
 Column:       Ready
@@ -63,78 +54,24 @@ Acceptance criteria:
 - REQ-109 gitleaks (all history), Semgrep and OSV-Scanner results are in `takeover/security.md`.
 - REQ-110 Any exposed key is listed for rotation before its first real use.
 
-## FLOW-01 Upload and embed a job description
-
 ## FLOW-02 Ingest resumes for a requisition
 
 ### ISS-20 Characterise FLOW-02 end to end against pgvector
 Labels:       characterise, flow:FLOW-02, module:resume-processor
-Column:       Ready (hardening; no longer blocks FLOW-02 slices since FLOW-02 is steady)
+Column:       Backlog (hardening; does not block FLOW-02 slices)
 Blocked by:   ISS-02
 Finding:      Unit-level characterisation exists (`test_ingest_resumes_*.py`). It is not yet checked against a real Postgres + pgvector and the Celery round trip.
 Acceptance criteria:
 - REQ-117 `pg`-marked tests for `process_and_link_resume` run in CI against a pgvector service container.
 
-### ISS-21 Path traversal through upload filename
-Labels:       slice, flow:FLOW-02, module:api, risky
-Column:       In review (branch fix/flow-02)
-Blocked by:   ISS-01
-Finding:      `backend.py` writes to `temp_uploads / file.filename`. `resume_processor.py` and `jd_processor.py` do the same with `uploaded_file.name`. A name like `../../x.pdf` writes outside the folder, and concurrent uploads with the same name overwrite each other.
-Acceptance criteria:
-- REQ-118 Uploads are stored under a generated unique name inside `temp_uploads/`.
-- REQ-119 A filename containing `..` or `/` cannot write outside `temp_uploads/` (test).
-- REQ-120 Uploads over a size limit get 413.
-
 ### ISS-22 Candidates de-duplicated by name only
 Labels:       slice, flow:FLOW-02, module:resume-processor, risky
-Column:       Needs you (schema decision: add `candidates.resume_hash` text UNIQUE and match on it; there is no migration tool yet, and `create_all` does not alter existing tables)
+Column:       Needs you (schema decision, see Finding)
 Blocked by:   none
 Finding:      `process_and_link_resume` updates any existing candidate with the same `name`. Two different people with the same name overwrite each other's data and applications.
+Options:      match on file hash (simple; an updated resume becomes a new row) or on email/phone with hash fallback (needs extraction change + migration). No migration tool exists yet.
 Acceptance criteria:
 - REQ-121 Identity uses the resume file hash (or another approved key); same-name, different-file resumes create two candidates.
-
-### ISS-23 Worker failures report as task SUCCESS
-Labels:       slice, flow:FLOW-02, module:worker, risky
-Column:       In review (branch fix/flow-02)
-Blocked by:   none
-Finding:      `worker.py` catches every exception and returns `{"status": "failed"}`, so Celery marks the task SUCCESS and the API answers "Completed". Characterised in `test_worker_failure_is_swallowed_into_result`.
-Acceptance criteria:
-- REQ-122 A pipeline failure makes `GET /task/{id}` return `"Failed"` with the error.
-
-### ISS-24 Resume extracted twice: UI re-processes after the worker
-Labels:       slice, flow:FLOW-02, module:streamlit
-Column:       In review (branch fix/flow-02)
-Blocked by:   ISS-23
-Finding:      After polling, Streamlit calls `process_and_link_resume` locally and relies on a Redis cache hit. If the worker and UI use different Redis instances, or the worker failed, the LLM runs again in the UI. Failed tasks are still linked.
-Acceptance criteria:
-- REQ-123 The UI links candidates from the task result and skips failed tasks.
-- REQ-124 The LLM is called at most once per resume per ingestion.
-
-### ISS-25 Polling loop has no timeout
-Labels:       slice, flow:FLOW-02, module:streamlit
-Column:       In review (branch fix/flow-02)
-Blocked by:   none
-Finding:      `while pending_tasks:` in `streamlit_app.py` loops forever if a task stays PENDING (for example, an unknown id or a worker that is down).
-Acceptance criteria:
-- REQ-125 Polling stops after a configurable timeout and reports the files that timed out.
-
-### ISS-26 Prompt injection from resume and JD text
-Labels:       slice, flow:FLOW-02, module:llm, risky
-Column:       In review (branch fix/flow-02)
-Blocked by:   ISS-05
-Finding:      Raw PDF text is pasted into LLM prompts (`extract_jd.py`, `extract_resume.py`) with no delimiting or output sanity checks.
-Acceptance criteria:
-- REQ-126 Document text is delimited as data in the prompt.
-- REQ-127 A resume containing "ignore previous instructions…" still yields schema-valid output (contract test with the fake).
-
-### ISS-27 Real resume extraction fails: Groq json_validate_failed
-Labels:       slice, flow:FLOW-02, module:llm, risky
-Column:       In review (branch fix/iss-27). Cause: gpt-oss used its default output budget on reasoning; fixed with reasoning_effort=low and max_completion_tokens=4096 (fits the 8000 TPM free tier). Also fixed: the wrapper lacked `.text`, and the schema and raw-response prints are removed.
-Blocked by:   none
-Finding:      Found 2026-10-29 by a real run against Groq. `extract_resume_data` on `app/pdf/Manalot_Anup_Dubey.pdf` fails with `400 json_validate_failed`, `failed_generation: ''`. It is the same on `main` and on fix/flow-02 (not caused by the ISS-26 prompt change), and JD extraction works. The model (`openai/gpt-oss-20b`, JSON mode, no `max_tokens`) returns an empty generation for the long resume prompt. The old worker hid this by reporting failures as SUCCESS. `extract_resume.py` also prints the Pydantic schema to stdout.
-Acceptance criteria:
-- REQ-141 The four sample resumes extract successfully against the Groq sandbox (contract test, opt-in).
-- REQ-142 Extraction failures carry the provider error code in the task result.
 
 ### ISS-28 Resume extraction prints candidate data to stdout
 Labels:       slice, flow:FLOW-02, module:llm, risky
@@ -149,7 +86,7 @@ Acceptance criteria:
 
 ### ISS-30 Characterise scoring with real pgvector in CI
 Labels:       characterise, flow:FLOW-03, module:scoring
-Column:       Ready
+Column:       Backlog
 Blocked by:   ISS-02
 Finding:      `test_scores_against_real_pgvector` exists but is skipped without `TEST_DATABASE_URL`.
 Acceptance criteria:
@@ -159,7 +96,7 @@ Acceptance criteria:
 
 ### ISS-40 Characterise shortlist screen
 Labels:       characterise, flow:FLOW-04, module:streamlit
-Column:       Ready
+Column:       Backlog
 Blocked by:   ISS-02
 Finding:      The queries and badge thresholds (80/65) are inline in `streamlit_app.py`, with no tests.
 Acceptance criteria:
@@ -185,7 +122,7 @@ Acceptance criteria:
 
 ### ISS-50 Characterise cache maintenance controls
 Labels:       characterise, flow:FLOW-05, module:streamlit
-Column:       Ready
+Column:       Backlog
 Blocked by:   ISS-02
 Finding:      No tests cover the sidebar maintenance controls.
 Acceptance criteria:
@@ -203,7 +140,7 @@ Acceptance criteria:
 ### ISS-52 "Force Re-parse" checkbox is not wired
 Labels:       slice, flow:FLOW-05, module:streamlit
 Column:       Backlog
-Blocked by:   ISS-50, ISS-24
+Blocked by:   ISS-50
 Finding:      `force_refresh_toggle` is never used. Ingestion always passes `force_refresh=False`.
 Acceptance criteria:
 - REQ-135 With the box ticked, each resume's cache entry is cleared and re-extracted.
@@ -212,8 +149,8 @@ Acceptance criteria:
 
 ### ISS-60 Non-terminal and unknown task states misreported
 Labels:       slice, flow:FLOW-06, module:api
-Column:       Backlog
-Blocked by:   ISS-01
+Column:       Ready
+Blocked by:   none
 Finding:      `GET /task/{id}` reports STARTED and RETRY as "Failed". An unknown id stays "Processing..." forever (Celery reports PENDING). Characterised in `test_task_status_mapping`.
 Acceptance criteria:
 - REQ-136 STARTED and RETRY return "Processing...".
@@ -229,14 +166,14 @@ Acceptance criteria:
 
 ## Summary
 
-| Flow | Characterise | Slices | Questions | Platform |
-| --- | --- | --- | --- | --- |
-| Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05 |
-| FLOW-01 | (done in sweep) | – (all done) | – | – |
-| FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26, 27, 28 | – | – |
-| FLOW-03 | ISS-30 | – | – | – |
-| FLOW-04 | ISS-40 | ISS-42 | ISS-41 | – |
-| FLOW-05 | ISS-50 | ISS-51, 52 | – | – |
-| FLOW-06 | (done in sweep) | ISS-60 | ISS-61 | – |
+| Area | Open issues |
+| --- | --- |
+| Cross-cutting | ISS-02 platform (Ready), ISS-03 question (Needs you), ISS-04 question (Needs you), ISS-05 platform (Ready) |
+| FLOW-01 | – (none open) |
+| FLOW-02 | ISS-20 characterise (Backlog), ISS-22 slice (Needs you), ISS-28 slice (Ready) |
+| FLOW-03 | ISS-30 characterise (Backlog) |
+| FLOW-04 | ISS-40 characterise (Backlog), ISS-41 question (Needs you), ISS-42 slice (Backlog) |
+| FLOW-05 | ISS-50 characterise (Backlog), ISS-51 slice (Backlog), ISS-52 slice (Backlog) |
+| FLOW-06 | ISS-60 slice (Ready), ISS-61 question (Needs you) |
 
-Done: ISS-10, 11, 12, 13, 14 (see `takeover/issues-done.md`).
+Done: ISS-01, ISS-10, ISS-11, ISS-12, ISS-13, ISS-14, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27 (see `takeover/issues-done.md`).
