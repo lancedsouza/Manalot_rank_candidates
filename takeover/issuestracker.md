@@ -129,12 +129,21 @@ Acceptance criteria:
 
 ### ISS-27 Real resume extraction fails: Groq json_validate_failed
 Labels:       slice, flow:FLOW-02, module:llm, risky
-Column:       Ready
+Column:       In review (branch fix/iss-27). Cause: gpt-oss used its default output budget on reasoning; fixed with reasoning_effort=low and max_completion_tokens=4096 (fits the 8000 TPM free tier). Also fixed: the wrapper lacked `.text`, and the schema and raw-response prints are removed.
 Blocked by:   none
 Finding:      Found 2026-10-29 by a real run against Groq. `extract_resume_data` on `app/pdf/Manalot_Anup_Dubey.pdf` fails with `400 json_validate_failed`, `failed_generation: ''`. It is the same on `main` and on fix/flow-02 (not caused by the ISS-26 prompt change), and JD extraction works. The model (`openai/gpt-oss-20b`, JSON mode, no `max_tokens`) returns an empty generation for the long resume prompt. The old worker hid this by reporting failures as SUCCESS. `extract_resume.py` also prints the Pydantic schema to stdout.
 Acceptance criteria:
 - REQ-141 The four sample resumes extract successfully against the Groq sandbox (contract test, opt-in).
 - REQ-142 Extraction failures carry the provider error code in the task result.
+
+### ISS-28 Resume extraction prints candidate data to stdout
+Labels:       slice, flow:FLOW-02, module:llm, risky
+Column:       Ready
+Blocked by:   none
+Finding:      `extract_resume.py` still prints the validated resume and every responsibility (24 to 132 lines per resume), so candidate PII goes to worker logs. Extraction also varies run to run: the same resume gave 75 skills and then 28.
+Acceptance criteria:
+- REQ-143 No resume content is printed; details go to logging at DEBUG.
+- REQ-144 Variance is measured across 3 runs per sample resume and recorded in takeover/test-health.md.
 
 ## FLOW-03 Score a candidate against a JD
 
@@ -224,7 +233,7 @@ Acceptance criteria:
 | --- | --- | --- | --- | --- |
 | Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05 |
 | FLOW-01 | (done in sweep) | – (all done) | – | – |
-| FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26, 27 | – | – |
+| FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26, 27, 28 | – | – |
 | FLOW-03 | ISS-30 | – | – | – |
 | FLOW-04 | ISS-40 | ISS-42 | ISS-41 | – |
 | FLOW-05 | ISS-50 | ISS-51, 52 | – | – |

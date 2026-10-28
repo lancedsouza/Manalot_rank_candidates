@@ -1960,28 +1960,6 @@ Return data matching the Resume schema.
     )
 
     # ========================================================
-    # CHECK SCHEMA
-    # ========================================================
-
-    print("\n" + "=" * 70)
-    print("EXPERIENCE PYDANTIC SCHEMA")
-    print("=" * 70)
-
-    schema = Resume.model_json_schema()
-
-    print(
-        schema.get(
-            "$defs",
-            {},
-        ).get(
-            "Experience",
-            {},
-        )
-    )
-
-    print("=" * 70)
-
-    # ========================================================
     # GEMINI
     # ========================================================
 
@@ -2053,18 +2031,6 @@ Return data matching the Resume schema.
         "Gemini resume response preview: %r",
         response_text[:300],
     )
-
-    # ========================================================
-    # DEBUG 1 — RAW GEMINI RESPONSE
-    # ========================================================
-
-    print("\n" + "=" * 70)
-    print("RAW GEMINI RESPONSE")
-    print("=" * 70)
-
-    print(response_text)
-
-    print("=" * 70)
 
     # ========================================================
     # PYDANTIC

@@ -619,6 +619,11 @@ def generate_structured_response(prompt: str, schema):
             ],
             response_format={"type": "json_object"},
             temperature=0.1,  # Low temperature for highly deterministic data extraction
+            # gpt-oss spends its default budget on reasoning and returns empty JSON on long
+            # resume prompts (400 json_validate_failed). Low effort + a cap fixes it (ISS-27).
+            # The cap counts toward Groq's 8000 tokens-per-minute limit, so keep it small.
+            reasoning_effort="low",
+            max_completion_tokens=4096,
         )
         
         raw_content = completion.choices[0].message.content
@@ -629,10 +634,11 @@ def generate_structured_response(prompt: str, schema):
         
         # Wrap it in a dummy object mimicking the structure expected by your downstream extractors (response.parsed)
         class GroqResponseWrapper:
-            def __init__(self, parsed_data):
+            def __init__(self, parsed_data, text):
                 self.parsed = parsed_data
+                self.text = text  # extract_resume reads .text (Gemini-era interface)
 
-        return GroqResponseWrapper(validated_instance)
+        return GroqResponseWrapper(validated_instance, raw_content)
 
     except Exception as e:
         logger.exception(f"Groq generation failed: {e}")

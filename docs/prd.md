@@ -41,7 +41,7 @@ What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names an
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
-Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-27 (real Groq resume extraction fails with json_validate_failed). Fixed on fix/flow-02: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26.
+Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-27 (Groq resume extraction failed; fix on fix/iss-27), ISS-28 (resume data printed to stdout). Fixed on fix/flow-02: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady
