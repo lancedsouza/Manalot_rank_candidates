@@ -4,6 +4,7 @@ redis
 pypdf
 sqlalchemy
 psycopg2-binary
+psycopg[binary]
 pgvector
 python-dotenv
 google-genai

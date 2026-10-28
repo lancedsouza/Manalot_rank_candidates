@@ -63,6 +63,15 @@ Acceptance criteria:
 - REQ-109 gitleaks (all history), Semgrep and OSV-Scanner results are in `takeover/security.md`.
 - REQ-110 Any exposed key is listed for rotation before its first real use.
 
+### ISS-14 Postgres driver missing under SQLAlchemy 2.1
+Labels:       platform, flow:FLOW-01, module:deps
+Column:       In review (branch platform/iss-14)
+Blocked by:   none
+Finding:      `requirements.txt` is unpinned, so it installs SQLAlchemy 2.1.6, which uses the `psycopg` (v3) driver for a plain `postgresql://` URL. Only `psycopg2-binary` was listed, so `app/database/db.py` failed with `ModuleNotFoundError: psycopg`.
+Acceptance criteria:
+- REQ-139 `requirements.txt` includes `psycopg[binary]`, so a plain `postgresql://` URL connects.
+- REQ-140 `.env.example` documents every variable the live code reads.
+
 ## FLOW-01 Upload and embed a job description
 
 ### ISS-10 JD can be embedded twice: duplicate check compares different titles
@@ -247,7 +256,7 @@ Acceptance criteria:
 
 | Flow | Characterise | Slices | Questions | Platform |
 | --- | --- | --- | --- | --- |
-| Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05 |
+| Cross-cutting | – | – | ISS-03, ISS-04 | ISS-01, ISS-02, ISS-05, ISS-14 |
 | FLOW-01 | (done in sweep) | ISS-10, 11, 12, 13 | – | – |
 | FLOW-02 | ISS-20 | ISS-21, 22, 23, 24, 25, 26 | – | – |
 | FLOW-03 | ISS-30 | – | – | – |
