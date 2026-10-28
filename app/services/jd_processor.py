@@ -109,6 +109,7 @@ Job Description ingestion:
   - Embeds the JD description + all required skills in ONE batched call
   - Stores JD + Jd_Skill rows
 """
+import logging
 import os
 from pathlib import Path
 
@@ -119,6 +120,8 @@ from app.utils.extract_jd import extract_structured_jd     # ← the LLM extract
 from app.embedding.embedding_service import create_embeddings
 
 EMBED_DIM = 384
+
+logger = logging.getLogger(__name__)
 
 
 def process_pdf_jd(session, uploaded_file):
@@ -142,6 +145,16 @@ def process_pdf_jd(session, uploaded_file):
         if not raw_text or not raw_text.strip():
             raise ValueError("Could not extract text from the JD PDF.")
 
+        # Same JD text already stored -> reuse it instead of a duplicate row (ISS-10)
+        existing = (
+            session.query(JD.id, JD.title)
+            .filter(JD.description == raw_text)
+            .first()
+        )
+        if existing:
+            logger.info("JD already embedded as id=%s", existing.id)
+            return existing.id, existing.title
+
         # 2. LLM extraction (Redis-cached inside extract_structured_jd)
         structured_jd = extract_structured_jd(raw_text)
 
@@ -162,21 +175,33 @@ def process_pdf_jd(session, uploaded_file):
         if not required_skills:
             required_skills = [title]
 
-        # Debug — remove once you've confirmed it works
-        print(f"[JD-LLM] title={title!r}")
-        print(f"[JD-LLM] required_skills ({len(required_skills)}): {required_skills}")
-        print(f"[JD-LLM] preferred_skills ({len(preferred_skills)}): {preferred_skills}")
-        print(f"[JD-LLM] responsibilities ({len(responsibilities)}): {responsibilities[:3]}...")
-        print(f"[JD-LLM] education={preferred_education}")
-        print(f"[JD-LLM] domain={domain}  industries={industries}")
+        logger.debug(
+            "JD extracted: title=%r required=%d preferred=%d responsibilities=%d",
+            title, len(required_skills), len(preferred_skills), len(responsibilities),
+        )
 
-        # 5. Embed description + all required skills in ONE batched call
-        payload = [raw_text] + required_skills
+        responsibilities = responsibilities or ["General responsibilities per job description"]
+
+        # 5. Embed description, each structured field and all required skills
+        #    in ONE batched call. Empty fields get no embedding (ISS-11).
+        field_texts = {
+            "responsibilities": " ".join(responsibilities),
+            "education": " ".join(preferred_education),
+            "domain": " ".join(domain),
+            "industries": " ".join(industries),
+            "required_skills": " ".join(required_skills),
+            "preferred_skills": " ".join(preferred_skills),
+        }
+        present = [k for k, v in field_texts.items() if v.strip()]
+        payload = [raw_text] + required_skills + [field_texts[k] for k in present]
         vectors = create_embeddings(payload)
         jd_embedding = vectors[0]
-        skill_vectors = vectors[1:]
+        n_skills = len(required_skills)
+        skill_vectors = vectors[1:1 + n_skills]
+        field_vecs = dict(zip(present, vectors[1 + n_skills:]))
 
-        dummy_vec = [0.0] * EMBED_DIM
+        # education_embedding is NOT NULL in the schema; keep a zero vector when empty
+        zero_vec = [0.0] * EMBED_DIM
 
         new_jd = JD(
             title=title,
@@ -184,16 +209,16 @@ def process_pdf_jd(session, uploaded_file):
             required_skills=required_skills,
             preferred_skills=preferred_skills,
             preferred_education=preferred_education,
-            responsibilities=responsibilities or ["General responsibilities per job description"],
+            responsibilities=responsibilities,
             domain=domain,
             industries=industries,
             embedding=jd_embedding,
-            responsibilities_embedding=jd_embedding,
-            education_embedding=dummy_vec,
-            domain_embedding=dummy_vec,
-            industries_embedding=dummy_vec,
-            required_skills_embeddings=dummy_vec,
-            preferred_skills_embeddings=dummy_vec,
+            responsibilities_embedding=field_vecs["responsibilities"],
+            education_embedding=field_vecs.get("education", zero_vec),
+            domain_embedding=field_vecs.get("domain"),
+            industries_embedding=field_vecs.get("industries"),
+            required_skills_embeddings=field_vecs.get("required_skills"),
+            preferred_skills_embeddings=field_vecs.get("preferred_skills"),
         )
         session.add(new_jd)
         session.flush()          # assigns new_jd.id

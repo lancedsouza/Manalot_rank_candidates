@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.services.extract_resume import extract_text
 from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
+from app.utils.redis_config import redis_url
 
 EMBED_DIM = 384
 
@@ -62,7 +63,7 @@ def _build_structural_texts(structured_resume):
 
 def _flush_cache_for_resume(pdf_path: Path) -> None:
     try:
-        url = os.getenv("REDIS_URL", "redis://localhost:6380")
+        url = redis_url()
         r = redis.Redis.from_url(url, decode_responses=True)
         r.delete(generate_cache_key(pdf_path))
     except Exception:

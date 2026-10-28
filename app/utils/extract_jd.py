@@ -354,13 +354,14 @@ import redis
 from dotenv import load_dotenv
 
 from app.services.gemini_service import generate_structured_response
+from app.utils.redis_config import redis_url
 from app.pydantic_models.jd_pydantic_models import JDRequirements
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = redis_url()
 CACHE_TTL = 60 * 60 * 24 * 7  # 7 days
 
 # Safe Redis init with graceful fallback

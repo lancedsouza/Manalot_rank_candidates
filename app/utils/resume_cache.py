@@ -142,12 +142,13 @@ import logging
 import redis
 from pathlib import Path
 from app.models.resume import Resume
+from app.utils.redis_config import redis_url
 from app.services.extract_resume import extract_resume_data
 
 logger = logging.getLogger(__name__)
 
 # Read from environment variables (defaults to local docker-compose port)
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6380")
+REDIS_URL = redis_url()
 
 CACHE_TTL = 60 * 60 * 24 * 60
 MODEL_VERSION = "gemini-3.6-flash"  # or "models/gemini-3.6-flash" depending on SDK method

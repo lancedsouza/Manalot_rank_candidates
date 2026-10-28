@@ -610,6 +610,8 @@ import streamlit as st
 from dotenv import load_dotenv
 from fastembed import TextEmbedding
 
+from app.utils.redis_config import redis_url
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -623,7 +625,7 @@ EMBED_DIM = 384
 _redis = None
 try:
     _redis = redis.Redis.from_url(
-        os.getenv("REDIS_URL", "redis://localhost:6380"),
+        redis_url(),
         decode_responses=True,
         socket_connect_timeout=2,
     )

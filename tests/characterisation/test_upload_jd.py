@@ -9,8 +9,22 @@ from app.utils import extract_jd
 
 
 class AddSession:
-    def __init__(self):
+    def __init__(self, existing=None):
         self.added, self.committed, self.rolled_back = [], False, False
+        self.existing = existing
+
+    def query(self, *cols):
+        # Supports the ISS-10 duplicate lookup: query(...).filter(...).first()
+        existing = self.existing
+
+        class Q:
+            def filter(self, *a):
+                return self
+
+            def first(self):
+                return existing
+
+        return Q()
 
     def add(self, obj):
         self.added.append(obj)
@@ -39,8 +53,10 @@ def test_persists_jd_and_one_row_per_required_skill(monkeypatch, fake_vectors, u
 
     jd, *skills = s.added
     assert jd.embedding == [1.0] * 384
-    assert jd.responsibilities_embedding == jd.embedding
-    assert jd.education_embedding == [0.0] * 384  # placeholder vectors today
+    # ISS-11 (owner-approved expectation change): fields get their own vectors;
+    # empty education keeps the NOT NULL zero vector, other empty fields are None.
+    assert jd.education_embedding == [0.0] * 384
+    assert jd.domain_embedding is None
     assert jd.responsibilities == ["General responsibilities per job description"]
     assert [(k.skill, k.skill_embedding[0]) for k in skills] == [("Excel", 2.0), ("SAP", 3.0)]
     assert s.committed

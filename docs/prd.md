@@ -14,11 +14,11 @@ Help a recruiter shortlist candidates for a job description (JD): upload a JD PD
 
 ## FLOW-01 Upload and embed a job description
 State: takeover
-What it does: a recruiter uploads a JD PDF; the text is LLM-extracted into `JDRequirements` (Redis-cached 7 days), embedded locally (bge-small, 384 dims) and stored in `jds` plus one `jd_skill` row per required skill.
+What it does: a recruiter uploads a JD PDF; if identical JD text is already stored, that row is reused; otherwise the text is LLM-extracted into `JDRequirements` (Redis-cached 7 days), embedded locally (bge-small, 384 dims) and stored in `jds` plus one `jd_skill` row per required skill.
 Acceptance criteria: REQ-001 to REQ-004 (see characterisation tests)
 Diagram: [FLOW-01](flows/web/upload-jd-flow.md)
-Characterisation tests: tests/characterisation/test_upload_jd.py, test_embedding_service.py
-Known issues: duplicate check compares the filename-derived title with the LLM title, so the same JD can be re-embedded; non-skill embeddings are zero placeholders.
+Characterisation tests: tests/characterisation/test_upload_jd.py, test_embedding_service.py; fixes in tests/flow01/
+Known issues: none open. Fixed: ISS-10 (same JD text reuses its row), ISS-11 (per-field embeddings), ISS-12 (no debug prints), ISS-13 (one shared Redis URL default, `app/utils/redis_config.py`).
 
 ## FLOW-02 Ingest resumes for a requisition
 State: takeover

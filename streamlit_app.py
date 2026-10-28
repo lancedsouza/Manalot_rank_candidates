@@ -865,6 +865,7 @@ from app.database.application_models import Application         # noqa: F401
 
 from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
+from app.utils.redis_config import redis_url
 
 # Ensure tables exist
 Base.metadata.create_all(bind=engine)
@@ -985,7 +986,7 @@ with st.sidebar.expander("🛠️ Maintenance Controls"):
 
     if st.button("🧹 Clear Entire Redis Cache", type="secondary"):
         try:
-            url = os.getenv("REDIS_URL", "redis://localhost:6380")
+            url = redis_url()
             r = redis.Redis.from_url(url, decode_responses=True)
             r.flushall()
             st.sidebar.success("Redis cache flushed!")
