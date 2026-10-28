@@ -346,7 +346,6 @@ Mirrors the resume extraction path:
   - Redis TTL = 7 days
 """
 
-import os
 import hashlib
 import logging
 

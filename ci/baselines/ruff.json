@@ -1,0 +1,18 @@
+{
+  "app/database/db.py": 1,
+  "app/database/resume_models.py": 1,
+  "app/database/test_redis.py": 1,
+  "app/embedding/embedding_service.py": 10,
+  "app/embedding/jd_skill_embed.py": 3,
+  "app/embedding/resume_embeding.py": 1,
+  "app/embedding/resume_skill_embed.py": 3,
+  "app/services/candidate_embedding.py": 9,
+  "app/services/gemini_service.py": 1,
+  "app/services/rank_candidates.py": 6,
+  "app/services/resume_processor.py": 4,
+  "app/services/test_xtra.py": 3,
+  "app/utils/clear_stale.py": 1,
+  "backend.py": 1,
+  "streamlit_app.py": 14,
+  "worker.py": 1
+}

@@ -1,0 +1,6 @@
+# Ratcheted lint rules (ISS-02). New files: zero findings. Changed files: no new findings.
+target-version = "py311"
+extend-exclude = [".venv", "temp_uploads"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]

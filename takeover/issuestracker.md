@@ -20,7 +20,7 @@ Usual chain per flow: `characterise` → first `slice` → later slices. A slice
 
 ### ISS-02 CI, pinned toolchain and ratchet baselines
 Labels:       platform, flow:FLOW-01, module:ci
-Column:       Ready
+Column:       In review (branch platform/iss-02)
 Blocked by:   none
 Finding:      No CI, `requirements.txt` unpinned, no lockfile, no lint/coverage/mutation baselines.
 Acceptance criteria:
@@ -54,11 +54,20 @@ Acceptance criteria:
 - REQ-109 gitleaks (all history), Semgrep and OSV-Scanner results are in `takeover/security.md`.
 - REQ-110 Any exposed key is listed for rotation before its first real use.
 
+### ISS-15 Mutation score on changed files
+Labels:       platform, flow:FLOW-02, module:ci
+Column:       Ready
+Blocked by:   none
+Finding:      Split from ISS-02, which landed the lint and coverage ratchets. No mutation testing runs yet, so tests that can never fail would not be caught.
+Acceptance criteria:
+- REQ-145 CI runs mutmut on the Python files a PR changes and records the score in `ci/baselines/mutation.json`.
+- REQ-146 The score on changed files may not fall.
+
 ## FLOW-02 Ingest resumes for a requisition
 
 ### ISS-20 Characterise FLOW-02 end to end against pgvector
 Labels:       characterise, flow:FLOW-02, module:resume-processor
-Column:       Backlog (hardening; does not block FLOW-02 slices)
+Column:       In review (branch platform/iss-02)
 Blocked by:   ISS-02
 Finding:      Unit-level characterisation exists (`test_ingest_resumes_*.py`). It is not yet checked against a real Postgres + pgvector and the Celery round trip.
 Acceptance criteria:
@@ -86,7 +95,7 @@ Acceptance criteria:
 
 ### ISS-30 Characterise scoring with real pgvector in CI
 Labels:       characterise, flow:FLOW-03, module:scoring
-Column:       Backlog
+Column:       In review (branch platform/iss-02)
 Blocked by:   ISS-02
 Finding:      `test_scores_against_real_pgvector` exists but is skipped without `TEST_DATABASE_URL`.
 Acceptance criteria:
@@ -168,10 +177,10 @@ Acceptance criteria:
 
 | Area | Open issues |
 | --- | --- |
-| Cross-cutting | ISS-02 platform (Ready), ISS-03 question (Needs you), ISS-04 question (Needs you), ISS-05 platform (Ready) |
+| Cross-cutting | ISS-02 platform (In review), ISS-15 platform (Ready), ISS-03 question (Needs you), ISS-04 question (Needs you), ISS-05 platform (Ready) |
 | FLOW-01 | – (none open) |
-| FLOW-02 | ISS-20 characterise (Backlog), ISS-22 slice (Needs you), ISS-28 slice (Ready) |
-| FLOW-03 | ISS-30 characterise (Backlog) |
+| FLOW-02 | ISS-20 characterise (In review), ISS-22 slice (Needs you), ISS-28 slice (Ready) |
+| FLOW-03 | ISS-30 characterise (In review) |
 | FLOW-04 | ISS-40 characterise (Backlog), ISS-41 question (Needs you), ISS-42 slice (Backlog) |
 | FLOW-05 | ISS-50 characterise (Backlog), ISS-51 slice (Backlog), ISS-52 slice (Backlog) |
 | FLOW-06 | ISS-60 slice (Ready), ISS-61 question (Needs you) |

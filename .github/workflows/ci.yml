@@ -1,0 +1,38 @@
+# CI (ISS-02): pinned toolchain, lint ratchet, full suite incl. pgvector tests, coverage ratchet.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:ci@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.21"
+      - name: Install Python 3.11 and locked dependencies
+        run: |
+          uv venv -p 3.11 .venv
+          uv pip sync -p .venv/bin/python requirements-dev.lock
+      - name: Check (lint ratchet + all tests incl. pg)
+        run: ./ci/check.sh --cov=app --cov=backend --cov=worker --cov-report=json:coverage.json
+      - name: Coverage ratchet
+        run: .venv/bin/python ci/ratchet.py coverage coverage.json
