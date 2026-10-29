@@ -21,7 +21,7 @@ Per `transition.md` ("Steady state"), a flow is steady once its characterisation
 | FLOW-01 | steady | Characterisation passes; ISS-10..13 fixed |
 | FLOW-02 | steady | Characterisation passes; ISS-21..26 logged (ISS-20 pg hardening open) |
 | FLOW-03 | steady | Characterisation passes, including the pg test on local pgvector |
-| FLOW-04 | takeover | No characterisation tests yet (ISS-40 blocks its slices) |
+| FLOW-04 | steady | Characterisation passes (AppTest + pgvector, ISS-40); ISS-42 logged |
 | FLOW-05 | takeover | No characterisation tests yet (ISS-50 blocks its slices) |
 | FLOW-06 | steady | Characterisation passes; ISS-60, ISS-61 logged |
 
@@ -52,11 +52,11 @@ Characterisation tests: tests/characterisation/test_score_candidate.py
 Known issues: none logged.
 
 ## FLOW-04 View shortlist and skill evidence
-State: takeover
+State: steady
 What it does: lists top-N applications by hybrid score with badges (≥80 Top, ≥65 Strong, else Moderate), coverage and up to 10 skill matches ≥ 0.72.
 Acceptance criteria: REQ-013
 Diagram: [FLOW-04](flows/web/view-shortlist-flow.md)
-Characterisation tests: none yet — queries live inline in `streamlit_app.py` (needs pg + Playwright).
+Characterisation tests: tests/characterisation/test_view_shortlist.py (Streamlit AppTest against pgvector; `pg` marker).
 Known issues: ISS-42 (unescaped names). Evidence threshold 0.72 vs coverage 0.75 is intended (owner, ISS-41).
 
 ## FLOW-05 Cache maintenance
