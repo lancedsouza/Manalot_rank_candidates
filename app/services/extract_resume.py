@@ -2062,7 +2062,7 @@ Return data matching the Resume schema.
             validation_elapsed,
         )
 
-        logger.error(
+        logger.debug(
             "Invalid Gemini response "
             "starts with: %r",
             response_text[:500],
@@ -2081,79 +2081,14 @@ Return data matching the Resume schema.
         validation_elapsed,
     )
 
-    # ========================================================
-    # DEBUG 2 — VALIDATED PYDANTIC OBJECT
-    # ========================================================
-
-    print("\n" + "=" * 70)
-    print("VALIDATED RESUME")
-    print("=" * 70)
-
-    print(
-        resume.model_dump()
+    # Resume content is candidate PII: DEBUG only, never stdout (ISS-28)
+    logger.debug(
+        "Validated resume: %d skills, %d experience records, "
+        "%d education records.",
+        len(resume.skills),
+        len(resume.experience),
+        len(resume.education),
     )
-
-    print("=" * 70)
-
-    # ========================================================
-    # DEBUG 3 — EXPERIENCE RESPONSIBILITIES ONLY
-    # ========================================================
-
-    print("\n" + "=" * 70)
-    print("EXPERIENCE RESPONSIBILITIES")
-    print("=" * 70)
-
-    for index, experience in enumerate(
-        resume.experience,
-        start=1,
-    ):
-
-        print(
-            f"\nExperience {index}"
-        )
-
-        print(
-            "Company:",
-            experience.company,
-        )
-
-        print(
-            "Title:",
-            experience.title,
-        )
-
-        print(
-            "Start:",
-            experience.start_date,
-        )
-
-        print(
-            "End:",
-            experience.end_date,
-        )
-
-        print(
-            "Responsibilities:"
-        )
-
-        if experience.responsibilities:
-
-            for responsibility in (
-                experience.responsibilities
-            ):
-
-                print(
-                    "-",
-                    responsibility,
-                )
-
-        else:
-
-            print(
-                "- NO RESPONSIBILITIES EXTRACTED"
-            )
-
-    print("\n" + "=" * 70)
 
     total_elapsed = (
         time.perf_counter()
@@ -2235,7 +2170,7 @@ def extract_resume_data(
             elapsed,
         )
 
-        logger.info(
+        logger.debug(
             "Candidate name detected: %s",
             name,
         )
