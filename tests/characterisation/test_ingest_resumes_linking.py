@@ -75,7 +75,9 @@ def test_new_candidate_inserted_name_from_filename(wired, upload, tmp_path):
     assert s.committed and not (tmp_path / "temp_uploads" / "anup_dubey.pdf").exists()
 
 
-def test_existing_name_updates_and_replaces_skills(wired, upload):
+def test_existing_email_updates_and_replaces_skills(wired, upload, monkeypatch):
+    # ISS-22 (owner-approved change): identity is email (+ phone), not name
+    monkeypatch.setattr(rp, "extract_text", lambda p: "resume text ada@example.com")
     s = RecordingSession(existing_candidate=9)
     rp.process_and_link_resume(s, upload("x.pdf"), jd_id=7)
     stmts = [q for q, _ in s.sql]

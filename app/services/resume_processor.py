@@ -17,6 +17,7 @@ from app.utils.resume_cache import process_resume, generate_cache_key
 from app.embedding.embedding_service import create_embeddings
 from app.utils.redis_config import redis_url
 from app.utils.uploads import safe_upload_path
+from app.utils.contact_extractor import extract_contacts
 
 EMBED_DIM = 384
 
@@ -32,6 +33,27 @@ W_DEPTH    = 0.25           # avg similarity of matched pairs
 # ============================================================
 # HELPERS
 # ============================================================
+def _find_candidate(session, email, phone):
+    """Existing candidate row for these contacts, or None (ISS-22).
+
+    Email + phone first, then email alone. No email means a new candidate:
+    name is never an identity key, since two people can share one.
+    """
+    if not email:
+        return None
+    if phone:
+        row = session.execute(
+            text("SELECT id FROM candidates WHERE email = :email AND phone = :phone"),
+            {"email": email, "phone": phone},
+        ).first()
+        if row:
+            return row
+    return session.execute(
+        text("SELECT id FROM candidates WHERE email = :email ORDER BY id LIMIT 1"),
+        {"email": email},
+    ).first()
+
+
 def _build_structural_texts(structured_resume):
     skills_text = " ".join(structured_resume.skills) if structured_resume.skills else ""
 
@@ -207,11 +229,9 @@ def process_and_link_resume(
             for e in (structured_resume.experience or [])
         ])
 
-        # UPSERT candidate
-        existing = session.execute(
-            text("SELECT id FROM candidates WHERE name = :name"),
-            {"name": name},
-        ).first()
+        # UPSERT candidate: email + phone, then email alone (ISS-22)
+        email, phone = extract_contacts(raw_text)
+        existing = _find_candidate(session, email, phone)
 
         if existing:
             cand_id = existing[0]
@@ -219,6 +239,9 @@ def process_and_link_resume(
                 text("""
                     UPDATE candidates
                     SET experience_years  = :exp_years,
+                        name              = :name,
+                        email             = :email,
+                        phone             = COALESCE(:phone, phone),
                         resume_text       = :resume_text,
                         skills_text       = :skills_text,
                         experience_text   = :exp_text,
@@ -244,6 +267,9 @@ def process_and_link_resume(
                     "education_json": education_json,
                     "experience_json": experience_json,
                     "cand_id": cand_id,
+                    "name": name,
+                    "email": email,
+                    "phone": phone,
                 },
             )
             session.execute(
@@ -254,12 +280,12 @@ def process_and_link_resume(
             res = session.execute(
                 text("""
                     INSERT INTO candidates
-                        (name, experience_years, resume_text, skills_text,
+                        (name, email, phone, experience_years, resume_text, skills_text,
                          experience_text, education_text,
                          embedding, skill_embeddings,
                          skills, education, experience, projects)
                     VALUES
-                        (:name, :exp_years, :resume_text, :skills_text,
+                        (:name, :email, :phone, :exp_years, :resume_text, :skills_text,
                          :exp_text, :edu_text,
                          CAST(:emb AS vector), CAST(:skill_emb AS vector),
                          CAST(:skills_arr AS text[]),
@@ -270,6 +296,8 @@ def process_and_link_resume(
                 """),
                 {
                     "name": name,
+                    "email": email,
+                    "phone": phone,
                     "exp_years": structured_resume.experience_years,
                     "resume_text": raw_text,
                     "skills_text": skills_text,

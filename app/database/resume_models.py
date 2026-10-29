@@ -160,6 +160,19 @@ class Candidate(Base):
         nullable=True,
     )
 
+    # Identity keys, normalised (ISS-22). Added to existing databases by
+    # app/database/schema_upgrade.py.
+    email = Column(
+        String,
+        nullable=True,
+        index=True,
+    )
+
+    phone = Column(
+        String,
+        nullable=True,
+    )
+
     # ========================================================
     # STRUCTURED RESUME DATA
     # ========================================================
