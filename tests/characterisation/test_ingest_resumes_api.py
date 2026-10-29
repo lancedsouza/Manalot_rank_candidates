@@ -10,8 +10,10 @@ from app.models.resume import Resume
 
 
 @pytest.fixture
-def client():
-    return TestClient(backend.app)
+def client(monkeypatch):
+    # ISS-61 (owner decision 2026-10-29): every endpoint needs the API key
+    monkeypatch.setenv("MANALOT_API_KEY", "test-key")
+    return TestClient(backend.app, headers={"X-API-Key": "test-key"})
 
 
 def test_rejects_non_pdf_with_400(client):

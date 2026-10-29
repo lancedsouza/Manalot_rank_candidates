@@ -875,6 +875,7 @@ upgrade_schema(engine)
 
 # FastAPI Server URL
 API_BASE_URL = "http://localhost:8000/api/v1"
+API_HEADERS = {"X-API-Key": os.getenv("MANALOT_API_KEY", "")}  # ISS-61
 POLL_TIMEOUT_S = 600  # stop waiting for workers after 10 minutes (ISS-25)
 
 # ============================================================
@@ -1054,7 +1055,7 @@ else:
                 status.text(f"Queueing {res_file.name} to AI Workers...")
                 files = {"file": (res_file.name, res_file.getvalue(), "application/pdf")}
                 try:
-                    resp = requests.post(f"{API_BASE_URL}/extract-resume/async", files=files)
+                    resp = requests.post(f"{API_BASE_URL}/extract-resume/async", files=files, headers=API_HEADERS)
                     resp.raise_for_status()
                     task_dict[res_file.name] = resp.json().get("task_id")
                 except Exception as e:
@@ -1068,7 +1069,7 @@ else:
                 status.info(f"AI Cluster is parsing resumes... ({len(pending)} remaining)")
                 for name, tid in list(pending.items()):
                     try:
-                        poll_resp = requests.get(f"{API_BASE_URL}/task/{tid}")
+                        poll_resp = requests.get(f"{API_BASE_URL}/task/{tid}", headers=API_HEADERS)
                         if poll_resp.status_code == 200:
                             body = poll_resp.json()
                             if body.get("status") in ["Completed", "Failed"]:

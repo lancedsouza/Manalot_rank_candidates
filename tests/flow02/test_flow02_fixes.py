@@ -34,7 +34,7 @@ def test_iss21_same_name_gets_unique_paths():
 def test_iss21_api_rejects_oversize_with_413(monkeypatch, tmp_path):
     monkeypatch.setattr(backend, "MAX_UPLOAD_BYTES", 10)
     monkeypatch.setattr(backend.process_resume_task, "delay", lambda p: pytest.fail("must not queue"))
-    r = TestClient(backend.app).post("/api/v1/extract-resume/async", files={"file": ("cv.pdf", b"x" * 11)})
+    r = TestClient(backend.app, headers={"X-API-Key": "test-key"}).post("/api/v1/extract-resume/async", files={"file": ("cv.pdf", b"x" * 11)})
     assert r.status_code == 413
     assert list((tmp_path / "temp_uploads").iterdir()) == []
 
@@ -42,7 +42,7 @@ def test_iss21_api_rejects_oversize_with_413(monkeypatch, tmp_path):
 def test_iss21_api_traversal_name_written_inside_temp_uploads(monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(backend.process_resume_task, "delay", lambda p: sent.append(p) or SimpleNamespace(id="t"))
-    TestClient(backend.app).post("/api/v1/extract-resume/async", files={"file": ("../../evil.pdf", b"%PDF")})
+    TestClient(backend.app, headers={"X-API-Key": "test-key"}).post("/api/v1/extract-resume/async", files={"file": ("../../evil.pdf", b"%PDF")})
     assert Path(sent[0]).resolve().parent == (tmp_path / "temp_uploads").resolve()
     assert not (tmp_path.parent / "evil.pdf").exists()
 
@@ -50,7 +50,7 @@ def test_iss21_api_traversal_name_written_inside_temp_uploads(monkeypatch, tmp_p
 def test_iss23_api_reports_failed_for_worker_error(monkeypatch):
     monkeypatch.setattr(backend, "AsyncResult",
                         lambda tid: SimpleNamespace(state="FAILURE", info=RuntimeError("llm down"), result=None))
-    assert TestClient(backend.app).get("/api/v1/task/x").json() == {"status": "Failed", "error": "llm down"}
+    assert TestClient(backend.app, headers={"X-API-Key": "test-key"}).get("/api/v1/task/x").json() == {"status": "Failed", "error": "llm down"}
 
 
 def test_iss24_structured_resume_skips_extraction(monkeypatch, upload, fake_vectors):
