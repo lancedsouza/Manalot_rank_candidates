@@ -1,4 +1,5 @@
 # CI (ISS-02): pinned toolchain, lint ratchet, full suite incl. pgvector tests, coverage ratchet.
+# ISS-15: mutation ratchet on the source files a PR changes.
 name: ci
 on:
   push:
@@ -25,6 +26,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg2://postgres:ci@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # mutation ratchet diffs against the PR base
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.21"
@@ -36,3 +39,6 @@ jobs:
         run: ./ci/check.sh --cov=app --cov=backend --cov=worker --cov-report=json:coverage.json
       - name: Coverage ratchet
         run: .venv/bin/python ci/ratchet.py coverage coverage.json
+      - name: Mutation ratchet (changed files)
+        if: github.event_name == 'pull_request'
+        run: .venv/bin/python ci/mutation.py origin/${{ github.base_ref }}

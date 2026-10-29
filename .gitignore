@@ -44,3 +44,7 @@ dist/
 # ===== OS =====
 .DS_Store
 Thumbs.db
+
+# mutmut sandbox and generated config (ci/mutation.py, ISS-15)
+mutants/
+setup.cfg

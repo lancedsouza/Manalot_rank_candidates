@@ -1,0 +1,6 @@
+{
+  "app/embedding/embedding_service.py": 66.7,
+  "app/services/jd_processor.py": 71.4,
+  "app/utils/extract_jd.py": 58.5,
+  "app/utils/resume_cache.py": 64.4
+}
