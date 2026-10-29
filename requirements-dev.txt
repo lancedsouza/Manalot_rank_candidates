@@ -4,3 +4,4 @@ fakeredis
 python-multipart
 pytest-cov
 ruff
+mutmut
