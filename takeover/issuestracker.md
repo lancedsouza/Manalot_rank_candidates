@@ -30,7 +30,7 @@ Acceptance criteria:
 
 ### ISS-05 Secret and history scan
 Labels:       platform, flow:FLOW-02, module:security, risky
-Column:       Ready
+Column:       In review (branch platform/iss-05, stacked)
 Blocked by:   none
 Finding:      No history scan has run yet. Keys for Groq, Neon and Redis may have been in readable files or old commits.
 Acceptance criteria:
@@ -39,7 +39,7 @@ Acceptance criteria:
 
 ### ISS-15 Mutation score on changed files
 Labels:       platform, flow:FLOW-02, module:ci
-Column:       Ready
+Column:       In review (branch platform/iss-15, stacked)
 Blocked by:   none
 Finding:      Split from ISS-02, which landed the lint and coverage ratchets. No mutation testing runs yet, so tests that can never fail would not be caught.
 Acceptance criteria:
@@ -58,18 +58,20 @@ Acceptance criteria:
 
 ### ISS-22 Candidates de-duplicated by name only
 Labels:       slice, flow:FLOW-02, module:resume-processor, risky
-Column:       Ready
+Column:       In review (branch slice/iss-22, stacked)
 Blocked by:   none
 Finding:      `process_and_link_resume` updates any existing candidate with the same `name`. Two different people with the same name overwrite each other's data and applications.
 Decision:     Owner, 2026-10-29: match on email + phone; if no match, match on email alone. Name is no longer an identity key.
+Note:         Contacts are parsed from raw resume text (`app/utils/contact_extractor.py`), not the LLM. A resume with no email always creates a new candidate. Existing rows have no email until re-ingested.
 Acceptance criteria:
 - REQ-121 A resume updates an existing candidate only when email and phone both match, or failing that when email matches; same-name resumes with different contacts create two candidates.
 
 ### ISS-28 Resume extraction prints candidate data to stdout
 Labels:       slice, flow:FLOW-02, module:llm, risky
-Column:       Ready
+Column:       In review (branch slice/iss-28, stacked)
 Blocked by:   none
 Finding:      `extract_resume.py` still prints the validated resume and every responsibility (24 to 132 lines per resume), so candidate PII goes to worker logs. Extraction also varies run to run: the same resume gave 75 skills and then 28.
+Open part:    REQ-144 (variance across 3 real Groq runs per resume) not done; needs real Groq calls, which tests may not make. Run it by hand and record in takeover/test-health.md.
 Acceptance criteria:
 - REQ-143 No resume content is printed; details go to logging at DEBUG.
 - REQ-144 Variance is measured across 3 runs per sample resume and recorded in takeover/test-health.md.
@@ -88,15 +90,16 @@ Acceptance criteria:
 
 ### ISS-40 Characterise shortlist screen
 Labels:       characterise, flow:FLOW-04, module:streamlit
-Column:       Backlog
+Column:       In review (branch characterise/iss-40, stacked)
 Blocked by:   ISS-02
 Finding:      The queries and badge thresholds (80/65) are inline in `streamlit_app.py`, with no tests.
+Note:         Uses Streamlit AppTest + pgvector instead of Playwright; covers every case in REQ-129.
 Acceptance criteria:
 - REQ-129 Playwright and pg tests cover: no JDs, no candidates, badge tiers, coverage and evidence rows.
 
 ### ISS-42 Unescaped HTML from candidate names
 Labels:       slice, flow:FLOW-04, module:streamlit, risky
-Column:       Backlog
+Column:       In review (branch slice/iss-42, stacked)
 Blocked by:   ISS-40
 Finding:      Candidate names come from resume text and are interpolated into `st.markdown(..., unsafe_allow_html=True)`.
 Acceptance criteria:
@@ -106,7 +109,7 @@ Acceptance criteria:
 
 ### ISS-50 Characterise cache maintenance controls
 Labels:       characterise, flow:FLOW-05, module:streamlit
-Column:       Backlog
+Column:       In review (branch characterise/iss-50, stacked)
 Blocked by:   ISS-02
 Finding:      No tests cover the sidebar maintenance controls.
 Acceptance criteria:
@@ -114,7 +117,7 @@ Acceptance criteria:
 
 ### ISS-51 "Clear Entire Redis Cache" runs FLUSHALL on the broker
 Labels:       slice, flow:FLOW-05, module:cache, risky
-Column:       Backlog
+Column:       In review (branch slice/iss-51, stacked)
 Blocked by:   ISS-50
 Finding:      `r.flushall()` also deletes the Celery queue and task results, so in-flight ingestion is lost.
 Acceptance criteria:
@@ -123,7 +126,7 @@ Acceptance criteria:
 
 ### ISS-52 "Force Re-parse" checkbox is not wired
 Labels:       slice, flow:FLOW-05, module:streamlit
-Column:       Backlog
+Column:       In review (branch slice/iss-52, stacked)
 Blocked by:   ISS-50
 Finding:      `force_refresh_toggle` is never used. Ingestion always passes `force_refresh=False`.
 Acceptance criteria:
@@ -133,7 +136,7 @@ Acceptance criteria:
 
 ### ISS-60 Non-terminal and unknown task states misreported
 Labels:       slice, flow:FLOW-06, module:api
-Column:       Ready
+Column:       In review (branch slice/iss-60, stacked)
 Blocked by:   none
 Finding:      `GET /task/{id}` reports STARTED and RETRY as "Failed". An unknown id stays "Processing..." forever (Celery reports PENDING). Characterised in `test_task_status_mapping`.
 Acceptance criteria:
@@ -142,7 +145,7 @@ Acceptance criteria:
 
 ### ISS-61 API has no authentication
 Labels:       slice, flow:FLOW-06, module:api, risky
-Column:       Ready
+Column:       In review (branch slice/iss-61, stacked)
 Blocked by:   none
 Finding:      Both endpoints are open. Anyone who can reach :8000 can upload files and read results, which include candidate PII.
 Acceptance criteria:
@@ -153,12 +156,14 @@ Decision:     Owner, 2026-10-29: API key.
 
 | Area | Open issues |
 | --- | --- |
-| Cross-cutting | ISS-02 platform (In review), ISS-05 platform (Ready), ISS-15 platform (Ready) |
+| Cross-cutting | ISS-02 platform, ISS-05 platform, ISS-15 platform (all In review) |
 | FLOW-01 | – (none open) |
-| FLOW-02 | ISS-20 characterise (In review), ISS-22 slice (Ready), ISS-28 slice (Ready) |
+| FLOW-02 | ISS-20 characterise, ISS-22 slice, ISS-28 slice (all In review; ISS-28 REQ-144 open) |
 | FLOW-03 | ISS-30 characterise (In review) |
-| FLOW-04 | ISS-40 characterise (Backlog), ISS-42 slice (Backlog) |
-| FLOW-05 | ISS-50 characterise (Backlog), ISS-51 slice (Backlog), ISS-52 slice (Backlog) |
-| FLOW-06 | ISS-60 slice (Ready), ISS-61 slice (Ready) |
+| FLOW-04 | ISS-40 characterise, ISS-42 slice (In review) |
+| FLOW-05 | ISS-50 characterise, ISS-51 slice, ISS-52 slice (In review) |
+| FLOW-06 | ISS-60 slice, ISS-61 slice (In review) |
+
+Merge order (each branch is one commit on the previous): platform/iss-02 → slice/iss-22 → slice/iss-28 → slice/iss-60 → slice/iss-61 → characterise/iss-40 → slice/iss-42 → characterise/iss-50 → slice/iss-51 → slice/iss-52 → platform/iss-05 → platform/iss-15 → docs/tracker-2026-10-29.
 
 Done: ISS-01, ISS-03, ISS-04, ISS-41, ISS-10, ISS-11, ISS-12, ISS-13, ISS-14, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27 (see `takeover/issues-done.md`).
