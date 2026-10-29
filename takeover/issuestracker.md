@@ -116,6 +116,16 @@ Finding:      Candidate names come from resume text and are interpolated into `s
 Acceptance criteria:
 - REQ-131 A name containing `<script>` or other HTML renders as text (test).
 
+### ISS-43 Results not shown after "Process Resumes in Background"
+Labels:       slice, flow:FLOW-04, module:streamlit
+Column:       In review (branch docs/iss-43, GitHub #16)
+Blocked by:   ISS-40
+Finding:      Owner report (2026-10-29): after clicking "🚀 Process Resumes in Background" (`streamlit_app.py:1051`) the resumes are parsed, but no results appear. The handler ends in `st.rerun()` (`streamlit_app.py:1111`), which also clears any `st.error`/`st.warning` shown during linking, so failures are invisible. The shortlist below (`streamlit_app.py:1119`) shows no JD keywords and no per-keyword matches.
+Acceptance criteria:
+- REQ-151 After processing, the results show `JD Keywords: <list> [<total> keywords]` for the selected requisition.
+- REQ-152 One row per candidate: `<name> <email> | <pct>% or <matched>/<total> | <resume keyword> vs <JD keyword> (<similarity>%), ...`, e.g. `Bob Farrell bob@gmail.com | 30% or 3/10 | AWS vs Cloud Run (80%), Agile Lead vs Scrum Lead (95%), Healthcare vs HealthInsurance (40%)`.
+- REQ-153 Errors and timeouts from a run stay visible after the page refreshes.
+
 ## FLOW-05 Cache maintenance
 
 ### ISS-50 Characterise cache maintenance controls
@@ -171,7 +181,7 @@ Decision:     Owner, 2026-10-29: API key.
 | FLOW-01 | – (none open) |
 | FLOW-02 | ISS-20 characterise, ISS-22 slice, ISS-28 slice (all In review; ISS-28 REQ-144 open) |
 | FLOW-03 | ISS-30 characterise (In review) |
-| FLOW-04 | ISS-40 characterise, ISS-42 slice (In review) |
+| FLOW-04 | ISS-40 characterise, ISS-42 slice (In review); ISS-43 slice (In review) |
 | FLOW-05 | ISS-50 characterise, ISS-51 slice, ISS-52 slice (In review) |
 | FLOW-06 | ISS-60 slice, ISS-61 slice (In review) |
 

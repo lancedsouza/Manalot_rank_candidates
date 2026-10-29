@@ -870,6 +870,7 @@ from app.services.resume_processor import process_and_link_resume
 from app.utils.redis_config import redis_url
 from app.utils.cache_maintenance import clear_app_cache  # noqa: E402
 from app.utils.resume_cache import forget_cached_resumes  # noqa: E402
+from app.utils.results_format import format_keywords_header, format_result_row  # noqa: E402
 from app.models.resume import Resume
 
 # Ensure tables exist, then add columns older databases lack
@@ -911,7 +912,7 @@ def get_db_session():
 
 def get_ranked_applications_for_jd(session, jd_id: int, top_n: int):
     query = text("""
-        SELECT c.id AS candidate_id, c.name AS candidate_name,
+        SELECT c.id AS candidate_id, c.name AS candidate_name, c.email AS candidate_email,
                a.hybrid_score, a.parent_score, a.skill_score
         FROM applications a
         JOIN candidates c ON a.candidate_id = c.id
@@ -924,6 +925,7 @@ def get_ranked_applications_for_jd(session, jd_id: int, top_n: int):
         {
             "id": r.candidate_id,
             "name": r.candidate_name,
+            "email": r.candidate_email,
             "hybrid_score": r.hybrid_score,
             "parent_score": r.parent_score,
             "skill_score": r.skill_score,
@@ -969,6 +971,30 @@ def get_candidate_coverage(session, jd_id: int, cand_id: int, threshold: float =
         sql, {"jd_id": jd_id, "cand_id": cand_id, "threshold": threshold}
     ).first()
     return (int(r.matched or 0), int(r.total or 0))
+
+
+def get_jd_keywords(session, jd_id: int):
+    rows = session.execute(
+        text("SELECT skill FROM jd_skill WHERE jd_id = :jd_id ORDER BY id"), {"jd_id": jd_id}
+    ).fetchall()
+    return [r.skill for r in rows]
+
+
+def get_keyword_matches(session, jd_id: int, cand_id: int, threshold: float = 0.75):
+    """Best resume skill per JD keyword at or above the coverage threshold (ISS-43)."""
+    sql = text("""
+        SELECT DISTINCT ON (js.id)
+            js.skill AS jd_skill,
+            cs.skill AS candidate_skill,
+            (1 - (cs.skill_embedding <=> js.skill_embedding)) AS similarity
+        FROM jd_skill js
+        JOIN cand_skill cs ON cs.cand_id = :cand_id
+        WHERE js.jd_id = :jd_id
+        ORDER BY js.id, cs.skill_embedding <=> js.skill_embedding
+    """)
+    rows = session.execute(sql, {"jd_id": jd_id, "cand_id": cand_id}).fetchall()
+    matches = [r for r in rows if r.similarity >= threshold]
+    return sorted(matches, key=lambda r: r.similarity, reverse=True)
 
 
 # ============================================================
@@ -1054,6 +1080,8 @@ else:
             
             # Step 1: Send all PDFs to the FastAPI/Celery Cluster
             task_dict = {}
+            run_errors = []  # kept in session_state so they survive st.rerun() (ISS-43)
+            linked = 0
             if force_refresh_toggle:
                 forget_cached_resumes([f.getvalue() for f in uploaded_resumes])  # ISS-52
             for idx, res_file in enumerate(uploaded_resumes):
@@ -1064,7 +1092,8 @@ else:
                     resp.raise_for_status()
                     task_dict[res_file.name] = resp.json().get("task_id")
                 except Exception as e:
-                    st.error(f"Failed to queue {res_file.name}: {e}")
+                    run_errors.append(f"Failed to queue {res_file.name}: {e}")
+                    st.error(run_errors[-1])
             
             # Step 2: Poll until every task is done or the deadline passes (ISS-25)
             results = {}
@@ -1085,7 +1114,8 @@ else:
                 if pending:
                     time.sleep(2)  # Prevent spamming the API
             for name in pending:
-                st.warning(f"Timed out waiting for {name}; not linked.")
+                run_errors.append(f"Timed out waiting for {name}; not linked.")
+                st.warning(run_errors[-1])
 
             # Step 3: Link from the worker's result; no second LLM call (ISS-24)
             status.text("Background processing complete! Finalizing Requisition Links...")
@@ -1096,7 +1126,8 @@ else:
                     if body is None:
                         continue
                     if body.get("status") != "Completed":
-                        st.error(f"Failed on {res_file.name}: {body.get('error')}")
+                        run_errors.append(f"Failed on {res_file.name}: {body.get('error')}")
+                        st.error(run_errors[-1])
                         continue
                     try:
                         process_and_link_resume(
@@ -1105,12 +1136,25 @@ else:
                             selected_jd_id,
                             structured_resume=Resume.model_validate(body["result"]["candidate"]),
                         )
+                        linked += 1
                     except Exception as e:
-                        st.error(f"Failed on {res_file.name}: {e}")
+                        run_errors.append(f"Failed on {res_file.name}: {e}")
+                        st.error(run_errors[-1])
 
-            status.success("All resumes scored and linked successfully! Refreshing dashboard...")
+            st.session_state["last_run"] = {
+                "linked": linked,
+                "total": len(uploaded_resumes),
+                "errors": run_errors,
+            }
+            status.success(f"Linked {linked}/{len(uploaded_resumes)} resumes. Refreshing dashboard...")
             time.sleep(2)
             st.rerun()
+
+    last_run = st.session_state.get("last_run")
+    if last_run:
+        st.markdown(f"**Last run:** {last_run['linked']}/{last_run['total']} resumes linked.")
+        for msg in last_run["errors"]:
+            st.error(msg)
 
     # ============================================================
     # SHORTLIST DISPLAY
@@ -1124,6 +1168,14 @@ else:
         if not ranked_list:
             st.warning("No candidates have applied to this requisition yet. Upload resumes above to begin.")
         else:
+            keywords = get_jd_keywords(session, selected_jd_id)
+            st.markdown("### 📊 Results")
+            st.text(format_keywords_header(keywords))
+            for cand in ranked_list:
+                matches = get_keyword_matches(session, selected_jd_id, cand["id"])
+                st.text(format_result_row(cand["name"], cand["email"], matches, len(keywords)))
+            st.markdown("---")
+
             for idx, cand in enumerate(ranked_list, 1):
                 match_pct  = (cand["hybrid_score"] or 0) * 100
                 parent_pct = (cand["parent_score"] or 0) * 100
