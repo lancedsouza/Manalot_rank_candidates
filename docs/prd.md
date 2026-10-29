@@ -41,7 +41,7 @@ What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names an
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
-Known issues: ISS-28 (resume data printed to stdout). Fixed: ISS-22 (identity by email + phone, then email), ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
+Known issues: none open. Fixed: ISS-22 (identity by email + phone, then email), ISS-28 (no resume content on stdout; counts at DEBUG), ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady
