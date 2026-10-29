@@ -28,6 +28,17 @@ Acceptance criteria:
 - REQ-104 Dependencies are locked (`uv pip compile`), and the build passes from a clean checkout.
 - REQ-105 ruff findings per file, coverage and mutation score are recorded in `ci/baselines/` and can only fall.
 
+### ISS-62 Loop keeps PR branches current and merges on green + approval
+Labels:       platform, flow:FLOW-01, module:ci
+Column:       In review (branch platform/iss-62)
+Blocked by:   none
+Finding:      Several PRs are open at once and nothing keeps them current with main, starts reviews or merges them.
+Acceptance criteria:
+- REQ-147 `ci/loop.sh` merges origin/main into each open PR branch in its own worktree (merge, never rebase, never force-push), runs `./ci/check.sh`, then pushes.
+- REQ-148 On conflict it runs `slice-owner` (30 turns) to resolve; if it cannot or the check fails, it aborts the merge, labels the PR `needs-you` and comments why.
+- REQ-149 On green CI with no review it starts `reviewer` (plus `security-reviewer` on `risky_paths` from `agents/roster.yaml`); non-risky, approved, green PRs get `gh pr merge --squash --auto`; risky PRs get `needs-you` and are never merged.
+- REQ-150 `ci/loop.sh --dry-run` only prints actions; turns and cost are posted on the PR when `claude` reports them.
+
 ### ISS-05 Secret and history scan
 Labels:       platform, flow:FLOW-02, module:security, risky
 Column:       Ready
@@ -153,7 +164,7 @@ Decision:     Owner, 2026-10-29: API key.
 
 | Area | Open issues |
 | --- | --- |
-| Cross-cutting | ISS-02 platform (In review), ISS-05 platform (Ready), ISS-15 platform (Ready) |
+| Cross-cutting | ISS-02 platform (In review), ISS-62 platform (In review), ISS-05 platform (Ready), ISS-15 platform (Ready) |
 | FLOW-01 | – (none open) |
 | FLOW-02 | ISS-20 characterise (In review), ISS-22 slice (Ready), ISS-28 slice (Ready) |
 | FLOW-03 | ISS-30 characterise (In review) |
