@@ -19,13 +19,13 @@ Per `transition.md` ("Steady state"), a flow is steady once its characterisation
 | Flow | State | Why |
 | --- | --- | --- |
 | FLOW-01 | steady | Characterisation passes; ISS-10..13 fixed |
-| FLOW-02 | steady | Characterisation passes; ISS-21..26 logged (ISS-20 pg hardening open) |
+| FLOW-02 | steady | Characterisation passes incl. pg (ISS-20); ISS-22, ISS-28 fixed |
 | FLOW-03 | steady | Characterisation passes, including the pg test on local pgvector |
 | FLOW-04 | steady | Characterisation passes (AppTest + pgvector, ISS-40); ISS-42 fixed |
 | FLOW-05 | steady | Characterisation passes (AppTest + fakeredis, ISS-50); ISS-51, ISS-52 fixed |
-| FLOW-06 | steady | Characterisation passes; ISS-60, ISS-61 logged |
+| FLOW-06 | steady | Characterisation passes; ISS-60, ISS-61 fixed |
 
-The takeover finishes when FLOW-04 and FLOW-05 are steady. Slice Owner parallelism stays at 1 until the first release (no deploy pipeline yet, ISS-02).
+All six flows are steady (2026-10-29); the takeover finishes when this stack merges. Slice Owner parallelism stays at 1 until the first release (no deploy pipeline yet, ISS-02).
 
 ## FLOW-01 Upload and embed a job description
 State: steady
