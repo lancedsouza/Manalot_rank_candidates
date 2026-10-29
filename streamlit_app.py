@@ -868,6 +868,7 @@ from app.database.schema_upgrade import upgrade_schema  # noqa: E402
 from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
 from app.utils.redis_config import redis_url
+from app.utils.cache_maintenance import clear_app_cache  # noqa: E402
 from app.models.resume import Resume
 
 # Ensure tables exist, then add columns older databases lack
@@ -994,7 +995,7 @@ with st.sidebar.expander("🛠️ Maintenance Controls"):
         try:
             url = redis_url()
             r = redis.Redis.from_url(url, decode_responses=True)
-            r.flushall()
+            clear_app_cache(r)  # cache keys only; Celery queue survives (ISS-51)
             st.sidebar.success("Redis cache flushed!")
         except Exception as e:
             st.sidebar.error(f"Error: {e}")
