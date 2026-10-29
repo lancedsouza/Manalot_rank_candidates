@@ -840,6 +840,7 @@
 #                     st.info("No primary skill evidence matches above threshold.")
 #                 st.markdown("---")
 
+import html
 import sys
 import os
 import time
@@ -1133,7 +1134,7 @@ else:
 
                 st.markdown(f"""
                 <div class="card">
-                    <h3>Rank #{idx}: {cand['name']}</h3>
+                    <h3>Rank #{idx}: {html.escape(cand['name'] or '')}</h3>
                     <p>{badge} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Hybrid Match Score:</b> {match_pct:.1f}%</p>
                 </div>
                 """, unsafe_allow_html=True)
