@@ -73,4 +73,4 @@ What it does: `GET /api/v1/task/{id}` maps Celery state to Processing / Complete
 Acceptance criteria: REQ-015
 Diagram: [FLOW-06](flows/api/task-status-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_api.py
-Known issues: ISS-60 (STARTED/RETRY reported as Failed; unknown IDs report Processing forever), ISS-61 (no auth). Worker failures now report Failed (ISS-23).
+Known issues: ISS-61 (no auth). Fixed: ISS-60 (STARTED/RETRY report Processing; unknown IDs still report Processing until Streamlit's 600 s timeout). Worker failures now report Failed (ISS-23).

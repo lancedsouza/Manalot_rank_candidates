@@ -38,7 +38,10 @@ def test_queues_pdf_and_returns_task_id(client, monkeypatch, tmp_path):
     ("PENDING", None, None, {"status": "Processing..."}),
     ("SUCCESS", None, {"status": "success"}, {"status": "Completed", "result": {"status": "success"}}),
     ("FAILURE", ValueError("boom"), None, {"status": "Failed", "error": "boom"}),
-    ("STARTED", None, None, {"status": "Failed", "error": "None"}),  # KNOWN-ISSUE: non-terminal states reported as Failed
+    # ISS-60 (owner-approved change 2026-10-29): non-terminal states are Processing
+    ("STARTED", None, None, {"status": "Processing..."}),
+    ("RETRY", ValueError("transient"), None, {"status": "Processing..."}),
+    ("REVOKED", None, None, {"status": "Failed", "error": "None"}),
 ])
 def test_task_status_mapping(client, monkeypatch, state, info, result, expected):
     monkeypatch.setattr(backend, "AsyncResult",
