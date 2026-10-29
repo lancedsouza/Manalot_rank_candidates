@@ -161,5 +161,6 @@ command -v gh >/dev/null || { echo "gh required" >&2; exit 1; }
 gh pr list --state open --base "$BASE" --json number,headRefName,isDraft,isCrossRepository \
   -q '.[] | select(.isDraft|not) | select(.isCrossRepository|not) | "\(.number) \(.headRefName)"' |
 while read -r num head; do
-  process_pr "$num" "$head" || log "PR #$num failed; continuing"
+  # </dev/null: gh/git/claude inside must not eat the remaining PR list
+  process_pr "$num" "$head" </dev/null || log "PR #$num failed; continuing"
 done
