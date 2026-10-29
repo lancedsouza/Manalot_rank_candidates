@@ -127,8 +127,11 @@ def test_no_evidence_above_threshold(app, pg_session):
     assert {m.label: m.value for m in at.metric}["JD Skill Coverage"] == "0/1"
 
 
-def test_candidate_name_is_interpolated_unescaped(app, pg_session):
+def test_candidate_name_html_is_escaped(app, pg_session):
+    # ISS-42 fixed: names come from resume text, so markup renders as text
     jd = _jd(pg_session)
-    _candidate(pg_session, jd, "<i>Eve</i>", 0.9)
+    _candidate(pg_session, jd, '<script>alert("x")</script>', 0.9)
     at = app()
-    assert "Rank #1: <i>Eve</i></h3>" in _cards(at)[0]  # KNOWN-ISSUE ISS-42: HTML in names is rendered
+    card = _cards(at)[0]
+    assert "<script>" not in card
+    assert "Rank #1: &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</h3>" in card
