@@ -68,7 +68,9 @@ Recruiter->UI.processResumes(pdfs, jdId) {
         @return Proc->UI: ValueError, rollback
       }
       vectors = Embed.create_embeddings(texts)
-      if("candidate name exists") {
+      Proc->Proc: email, phone from resume text
+      // identity: email + phone, else email alone; no email -> new candidate
+      if("candidate with same email (+ phone) exists") {
         DB->DB: update candidate, replace cand_skill rows
       } else {
         DB->DB: insert candidate and cand_skill rows

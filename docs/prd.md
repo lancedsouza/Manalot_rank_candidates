@@ -37,11 +37,11 @@ Known issues: none open. Fixed: ISS-10 (same JD text reuses its row), ISS-11 (pe
 
 ## FLOW-02 Ingest resumes for a requisition
 State: steady
-What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names and queued via FastAPI to a Celery worker that extracts them (Redis-cached). Streamlit polls for up to 600 s, then links each completed task's parsed resume without a second LLM call: it upserts the candidate by name, stores skill embeddings and scores the application.
+What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names and queued via FastAPI to a Celery worker that extracts them (Redis-cached). Streamlit polls for up to 600 s, then links each completed task's parsed resume without a second LLM call: it upserts the candidate by email + phone (else email alone; a resume without an email is always a new candidate), stores skill embeddings and scores the application.
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
-Known issues: ISS-22 (de-duplicated by name only; owner chose email + phone, then email), ISS-28 (resume data printed to stdout). Fixed: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
+Known issues: ISS-28 (resume data printed to stdout). Fixed: ISS-22 (identity by email + phone, then email), ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady

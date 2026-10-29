@@ -863,13 +863,15 @@ from app.database.jd_models import JD                         # noqa: F401
 from app.database.jd_skill_table import Jd_Skill                # noqa: F401
 from app.database.application_models import Application         # noqa: F401
 
+from app.database.schema_upgrade import upgrade_schema  # noqa: E402
 from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
 from app.utils.redis_config import redis_url
 from app.models.resume import Resume
 
-# Ensure tables exist
+# Ensure tables exist, then add columns older databases lack
 Base.metadata.create_all(bind=engine)
+upgrade_schema(engine)
 
 # FastAPI Server URL
 API_BASE_URL = "http://localhost:8000/api/v1"

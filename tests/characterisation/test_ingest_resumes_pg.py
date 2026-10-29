@@ -103,16 +103,17 @@ def test_new_candidate_row_skills_and_application(pg_session, wired, upload):
     assert app.skill_score == pytest.approx(0.5 * 0.5 + 0.5 * 1.0)
 
 
-def test_same_name_updates_row_replaces_skills_and_upserts_application(pg_session, wired, upload):
+def test_same_contacts_update_row_replace_skills_and_upsert_application(pg_session, wired, upload, monkeypatch):
     from sqlalchemy import text
 
     rp, resume = wired
+    monkeypatch.setattr(rp, "extract_text", lambda p: "Ada Lovelace ada@example.com +44 20 7946 0958")
     jd_id = _jd(pg_session)
     first, _ = rp.process_and_link_resume(pg_session, upload("ada.pdf"), jd_id, structured_resume=resume)
     second, _ = rp.process_and_link_resume(pg_session, upload("ada2.pdf"), jd_id,
                                            structured_resume=resume.model_copy(update={"skills": ["Tableau"]}))
 
-    assert first == second  # ISS-22: same name -> same row
+    assert first == second  # ISS-22 (owner-approved change): same email + phone -> same row
     assert pg_session.execute(text("SELECT count(*) FROM candidates")).scalar() == 1
     assert pg_session.execute(text("SELECT skill FROM cand_skill")).scalars().all() == ["Tableau"]
     assert pg_session.execute(text("SELECT count(*) FROM applications")).scalar() == 1
