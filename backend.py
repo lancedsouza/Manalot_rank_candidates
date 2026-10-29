@@ -39,7 +39,8 @@ async def get_task_status(task_id: str):
     """Allows the Streamlit frontend to check if the background worker is finished."""
     task = AsyncResult(task_id)
     
-    if task.state == 'PENDING':
+    # PENDING also covers unknown ids; Streamlit's poll timeout ends those (ISS-25)
+    if task.state in ('PENDING', 'STARTED', 'RETRY'):
         return {"status": "Processing..."}
     elif task.state == 'SUCCESS':
         return {"status": "Completed", "result": task.result}
