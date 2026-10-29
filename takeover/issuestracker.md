@@ -28,23 +28,6 @@ Acceptance criteria:
 - REQ-104 Dependencies are locked (`uv pip compile`), and the build passes from a clean checkout.
 - REQ-105 ruff findings per file, coverage and mutation score are recorded in `ci/baselines/` and can only fall.
 
-### ISS-03 Committed resume PDFs (personal data)
-Labels:       question, flow:FLOW-02, module:data, risky
-Column:       Needs you
-Blocked by:   none
-Finding:      `app/pdf/*.pdf` (4 candidate resumes) and `app/jd_data/*.pdf` are in git, with `:Zone.Identifier` files.
-Acceptance criteria:
-- REQ-106 Owner decides: keep, remove from the tree, or remove from history (force-push).
-- REQ-107 If removed, tests use synthetic fixture PDFs only.
-
-### ISS-04 Kickoff decisions
-Labels:       question, flow:FLOW-02, module:process
-Column:       Needs you
-Blocked by:   none
-Finding:      Kickoff brief not filled in. First flow, budget, caps, review rhythm and current deployment target (HF Spaces / Streamlit Cloud / Docker) are unknown.
-Acceptance criteria:
-- REQ-108 Kickoff brief approved; first flow recorded (recommended: FLOW-02).
-
 ### ISS-05 Secret and history scan
 Labels:       platform, flow:FLOW-02, module:security, risky
 Column:       Ready
@@ -75,12 +58,12 @@ Acceptance criteria:
 
 ### ISS-22 Candidates de-duplicated by name only
 Labels:       slice, flow:FLOW-02, module:resume-processor, risky
-Column:       Needs you (schema decision, see Finding)
+Column:       Ready
 Blocked by:   none
 Finding:      `process_and_link_resume` updates any existing candidate with the same `name`. Two different people with the same name overwrite each other's data and applications.
-Options:      match on file hash (simple; an updated resume becomes a new row) or on email/phone with hash fallback (needs extraction change + migration). No migration tool exists yet.
+Decision:     Owner, 2026-10-29: match on email + phone; if no match, match on email alone. Name is no longer an identity key.
 Acceptance criteria:
-- REQ-121 Identity uses the resume file hash (or another approved key); same-name, different-file resumes create two candidates.
+- REQ-121 A resume updates an existing candidate only when email and phone both match, or failing that when email matches; same-name resumes with different contacts create two candidates.
 
 ### ISS-28 Resume extraction prints candidate data to stdout
 Labels:       slice, flow:FLOW-02, module:llm, risky
@@ -110,14 +93,6 @@ Blocked by:   ISS-02
 Finding:      The queries and badge thresholds (80/65) are inline in `streamlit_app.py`, with no tests.
 Acceptance criteria:
 - REQ-129 Playwright and pg tests cover: no JDs, no candidates, badge tiers, coverage and evidence rows.
-
-### ISS-41 Evidence threshold (0.72) differs from coverage threshold (0.75)
-Labels:       question, flow:FLOW-04, module:scoring
-Column:       Needs you
-Blocked by:   none
-Finding:      `get_candidate_evidence` shows matches ≥ 0.72, but coverage counts only matches ≥ 0.75. Evidence can list skills that coverage does not count.
-Acceptance criteria:
-- REQ-130 Owner chooses a single threshold or confirms the difference is intended.
 
 ### ISS-42 Unescaped HTML from candidate names
 Labels:       slice, flow:FLOW-04, module:streamlit, risky
@@ -163,26 +138,27 @@ Blocked by:   none
 Finding:      `GET /task/{id}` reports STARTED and RETRY as "Failed". An unknown id stays "Processing..." forever (Celery reports PENDING). Characterised in `test_task_status_mapping`.
 Acceptance criteria:
 - REQ-136 STARTED and RETRY return "Processing...".
-- REQ-137 Characterisation expectation change approved by owner.
+- REQ-137 Characterisation expectation change approved by owner (approved 2026-10-29).
 
 ### ISS-61 API has no authentication
-Labels:       question, flow:FLOW-06, module:api, risky
-Column:       Needs you
+Labels:       slice, flow:FLOW-06, module:api, risky
+Column:       Ready
 Blocked by:   none
 Finding:      Both endpoints are open. Anyone who can reach :8000 can upload files and read results, which include candidate PII.
 Acceptance criteria:
-- REQ-138 Owner decides: network-only access, API key, or SSO.
+Decision:     Owner, 2026-10-29: API key.
+- REQ-138 Both endpoints reject requests without a valid API key (401); Streamlit sends the key.
 
 ## Summary
 
 | Area | Open issues |
 | --- | --- |
-| Cross-cutting | ISS-02 platform (In review), ISS-15 platform (Ready), ISS-03 question (Needs you), ISS-04 question (Needs you), ISS-05 platform (Ready) |
+| Cross-cutting | ISS-02 platform (In review), ISS-05 platform (Ready), ISS-15 platform (Ready) |
 | FLOW-01 | – (none open) |
-| FLOW-02 | ISS-20 characterise (In review), ISS-22 slice (Needs you), ISS-28 slice (Ready) |
+| FLOW-02 | ISS-20 characterise (In review), ISS-22 slice (Ready), ISS-28 slice (Ready) |
 | FLOW-03 | ISS-30 characterise (In review) |
-| FLOW-04 | ISS-40 characterise (Backlog), ISS-41 question (Needs you), ISS-42 slice (Backlog) |
+| FLOW-04 | ISS-40 characterise (Backlog), ISS-42 slice (Backlog) |
 | FLOW-05 | ISS-50 characterise (Backlog), ISS-51 slice (Backlog), ISS-52 slice (Backlog) |
-| FLOW-06 | ISS-60 slice (Ready), ISS-61 question (Needs you) |
+| FLOW-06 | ISS-60 slice (Ready), ISS-61 slice (Ready) |
 
-Done: ISS-01, ISS-10, ISS-11, ISS-12, ISS-13, ISS-14, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27 (see `takeover/issues-done.md`).
+Done: ISS-01, ISS-03, ISS-04, ISS-41, ISS-10, ISS-11, ISS-12, ISS-13, ISS-14, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27 (see `takeover/issues-done.md`).

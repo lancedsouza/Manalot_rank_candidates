@@ -2,6 +2,34 @@
 
 Completed issues moved from `takeover/issuestracker.md`. IDs are kept, never reused.
 
+### ISS-03 Committed resume PDFs (personal data)
+Labels:       question, flow:FLOW-02, module:data, risky
+Column:       Done (owner decision 2026-10-29: keep the PDFs in git)
+Blocked by:   none
+Finding:      `app/pdf/*.pdf` (4 candidate resumes) and `app/jd_data/*.pdf` are in git, with `:Zone.Identifier` files.
+Acceptance criteria:
+- REQ-106 Owner decides: keep, remove from the tree, or remove from history (force-push).
+- REQ-107 If removed, tests use synthetic fixture PDFs only.
+
+
+### ISS-04 Kickoff decisions
+Labels:       question, flow:FLOW-02, module:process
+Column:       Done (owner decision 2026-10-29: kickoff settled, FLOW-02 already delivered; move remaining flows to steady state and fix issues flow by flow)
+Blocked by:   none
+Finding:      Kickoff brief not filled in. First flow, budget, caps, review rhythm and current deployment target (HF Spaces / Streamlit Cloud / Docker) are unknown.
+Acceptance criteria:
+- REQ-108 Kickoff brief approved; first flow recorded (recommended: FLOW-02).
+
+
+### ISS-41 Evidence threshold (0.72) differs from coverage threshold (0.75)
+Labels:       question, flow:FLOW-04, module:scoring
+Column:       Done (owner decision 2026-10-29: keep 0.72 evidence and 0.75 coverage as intended)
+Blocked by:   none
+Finding:      `get_candidate_evidence` shows matches ≥ 0.72, but coverage counts only matches ≥ 0.75. Evidence can list skills that coverage does not count.
+Acceptance criteria:
+- REQ-130 Owner chooses a single threshold or confirms the difference is intended.
+
+
 ### ISS-14 Postgres driver missing under SQLAlchemy 2.1
 Labels:       platform, flow:FLOW-01, module:deps
 Column:       Done (merged to main in f4a2f73, 2026-10-29)
