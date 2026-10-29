@@ -22,7 +22,7 @@ Per `transition.md` ("Steady state"), a flow is steady once its characterisation
 | FLOW-02 | steady | Characterisation passes; ISS-21..26 logged (ISS-20 pg hardening open) |
 | FLOW-03 | steady | Characterisation passes, including the pg test on local pgvector |
 | FLOW-04 | steady | Characterisation passes (AppTest + pgvector, ISS-40); ISS-42 fixed |
-| FLOW-05 | steady | Characterisation passes (AppTest + fakeredis, ISS-50); ISS-51, ISS-52 logged |
+| FLOW-05 | steady | Characterisation passes (AppTest + fakeredis, ISS-50); ISS-51 fixed, ISS-52 logged |
 | FLOW-06 | steady | Characterisation passes; ISS-60, ISS-61 logged |
 
 The takeover finishes when FLOW-04 and FLOW-05 are steady. Slice Owner parallelism stays at 1 until the first release (no deploy pipeline yet, ISS-02).
@@ -61,11 +61,11 @@ Known issues: none open. Fixed: ISS-42 (candidate names HTML-escaped). Evidence 
 
 ## FLOW-05 Cache maintenance
 State: steady
-What it does: "Clear Entire Redis Cache" runs FLUSHALL.
+What it does: "Clear Entire Redis Cache" deletes only cache keys (`resume_extract:*`, `jd_cache:*`, `emb:*`).
 Acceptance criteria: REQ-014
 Diagram: [FLOW-05](flows/web/cache-maintenance-flow.md)
 Characterisation tests: tests/characterisation/test_cache_maintenance.py (Streamlit AppTest, fakeredis, `pg` marker).
-Known issues: FLUSHALL also wipes the Celery broker and results; "Force Re-parse" checkbox is not wired.
+Known issues: "Force Re-parse" checkbox is not wired (ISS-52). Fixed: ISS-51 (Celery queue and results survive a clear).
 
 ## FLOW-06 Poll task status
 State: steady

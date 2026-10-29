@@ -55,14 +55,16 @@ def test_controls_render_with_force_reparse_off(app, fake):
     assert _button(at, CLEAR).proto.type == "secondary"
 
 
-def test_clear_cache_success_flushes_every_key(app, fake):
-    for k in ("resume_extract:a", "jd_cache:b", "emb:c", "celery", "celery-task-meta-1"):
+def test_clear_cache_success_keeps_celery_keys(app, fake):
+    for k in ("resume_extract:a", "jd_cache:b", "emb:c", "celery-task-meta-1", "_kombu.binding.celery"):
         fake.set(k, "x")
+    fake.rpush("celery", "queued-task")
     at = app()
     at = _button(at, CLEAR).click().run()
     assert [s.value for s in at.sidebar.success] == ["Redis cache flushed!"]
-    # KNOWN-ISSUE ISS-51: FLUSHALL also deletes the Celery queue and task results
-    assert fake.keys("*") == []
+    # ISS-51 fixed: only cache keys go; the Celery queue and results survive
+    assert sorted(fake.keys("*")) == ["_kombu.binding.celery", "celery", "celery-task-meta-1"]
+    assert fake.lrange("celery", 0, -1) == ["queued-task"]
 
 
 def test_clear_cache_error_shows_message(app, monkeypatch):

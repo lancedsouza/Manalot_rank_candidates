@@ -9,8 +9,8 @@ title FLOW-05 Cache maintenance
 // Force Re-parse checkbox is rendered but not wired to ingestion
 Recruiter->UI.clearCache() {
   try {
-    // FLUSHALL also removes Celery queue and task results
-    Redis.flushall()
+    // only cache keys; Celery queue and task results survive (ISS-51)
+    Redis.scanAndDelete("resume_extract:*, jd_cache:*, emb:*")
     return "Redis cache flushed!"
   } catch {
     @return UI->Recruiter: sidebar error
