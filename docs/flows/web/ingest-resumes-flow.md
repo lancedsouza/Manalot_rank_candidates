@@ -15,7 +15,7 @@ title FLOW-02 Ingest resumes for a requisition
 // Streamlit page: `http://localhost:8501` (docker-compose) or `:7860` (start.sh)
 Recruiter->UI.processResumes(pdfs, jdId) {
   loop("each uploaded PDF") {
-    // `POST http://localhost:8000/api/v1/extract-resume/async` (API_BASE_URL, hardcoded in streamlit_app.py)
+    // `POST http://localhost:8000/api/v1/extract-resume/async` (API_BASE_URL, hardcoded in streamlit_app.py), header X-API-Key; 401/503 without a valid key (ISS-61)
     taskId = API.extractResumeAsync(pdf) {
       if("filename not .pdf") {
         @return API->UI: 400 Only PDF files are supported
