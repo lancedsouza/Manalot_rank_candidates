@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
 # The loop (PR half): keep every open PR current with main, review it, merge it.
-# Usage: ci/loop.sh [--dry-run]     (--dry-run: read-only queries, prints the actions it would take)
+# Usage: ci/loop.sh [--dry-run] [--pr N]... [--owner-approved N]...
+#   --dry-run            read-only queries; prints the actions it would take
+#   --pr N               only process these PRs (repeatable; default: all open PRs)
+#   --owner-approved N   the owner approved PR N: merge it on green CI even if risky, skip agent reviews
+# Stacks: a PR whose base branch is already in main is retargeted to main, lowest number first,
+# so one run can walk a stack once each owner-approved PR merges.
 # Needs: git, gh (authenticated), python3; claude CLI for conflicts and reviews.
-# Rules: merge, never rebase; never force-push; risky PRs are never merged here.
+# Rules: merge, never rebase; never force-push; risky PRs merge only with --owner-approved.
 # Out of scope (see ISS-62): pulling Ready issues and starting slice-owner runs.
 set -euo pipefail
 
 DRY=0
-[ "${1:-}" = "--dry-run" ] && DRY=1
+ONLY=" "
+OWNER_OK=" "
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY=1 ;;
+    --pr) ONLY="$ONLY$2 "; shift ;;
+    --owner-approved) OWNER_OK="$OWNER_OK$2 "; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+# Heads merged in this dry run, so later stacked PRs see their base as merged.
+SIM_MERGED=" "
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -117,11 +134,28 @@ update_branch() { # <pr> <head-branch> ; sets WT, returns 0 ok / 1 needs-you pos
   return 1
 }
 
+# base_merged <base-branch>: succeeds if the branch is already contained in origin/$BASE.
+base_merged() {
+  case "$SIM_MERGED" in *" $1 "*) return 0 ;; esac
+  git fetch -q origin "$BASE" "$1" 2>/dev/null || return 1
+  git merge-base --is-ancestor "origin/$1" "origin/$BASE"
+}
+
 process_pr() {
-  local n="$1" head="$2" files labels risky=0 checks decision reviews sha
-  log "PR #$n ($head)"
+  local n="$1" head="$2" base="$3" files labels risky=0 checks decision reviews sha owner=0
+  log "PR #$n ($head -> $base)"
+  case "$OWNER_OK" in *" $n "*) owner=1 ;; esac
+  if [ "$base" != "$BASE" ]; then
+    if base_merged "$base"; then
+      act gh pr edit "$n" --base "$BASE"
+      log "PR #$n: $base is already in $BASE; retargeted to $BASE"
+    else
+      log "PR #$n: stacked on $base, which is not in $BASE yet; skipping"
+      return 0
+    fi
+  fi
   labels="$(gh pr view "$n" --json labels -q '[.labels[].name]|join(",")')"
-  case ",$labels," in *,needs-you,*) log "PR #$n already in Needs you; skipping"; return 0 ;; esac
+  case ",$labels," in *,needs-you,*) [ "$owner" = 1 ] || { log "PR #$n already in Needs you; skipping"; return 0; } ;; esac
 
   update_branch "$n" "$head" || return 0
   git fetch -q origin "$BASE" "$head"
@@ -136,6 +170,14 @@ process_pr() {
   log "PR #$n: risky=$risky ci=$checks reviews=$reviews decision=${decision:-none}"
 
   [ "$checks" = green ] || return 0
+
+  if [ "$owner" = 1 ]; then
+    # Merge commit, not squash: PRs stacked on this one keep a shared history.
+    act gh pr merge "$n" --merge
+    [ "$DRY" = 1 ] && SIM_MERGED="$SIM_MERGED$head "
+    log "PR #$n: owner-approved; merged"
+    return 0
+  fi
 
   if [ "$reviews" = 0 ] && ! has_marker "$n" "loop:review-started:$sha"; then
     act gh pr comment "$n" --body "loop:review-started:$sha"
@@ -158,9 +200,11 @@ process_pr() {
 command -v gh >/dev/null || { echo "gh required" >&2; exit 1; }
 [ "$DRY" = 1 ] && log "dry run: no pushes, comments, labels, merges or worktrees"
 
-gh pr list --state open --base "$BASE" --json number,headRefName,isDraft,isCrossRepository \
-  -q '.[] | select(.isDraft|not) | select(.isCrossRepository|not) | "\(.number) \(.headRefName)"' |
-while read -r num head; do
+# Lowest number first, so a stack's lower PRs merge before the ones built on them.
+gh pr list --state open --json number,headRefName,baseRefName,isDraft,isCrossRepository \
+  -q 'sort_by(.number) | .[] | select(.isDraft|not) | select(.isCrossRepository|not) | "\(.number) \(.headRefName) \(.baseRefName)"' |
+while read -r num head base; do
+  [ "$ONLY" = " " ] || case "$ONLY" in *" $num "*) ;; *) continue ;; esac
   # </dev/null: gh/git/claude inside must not eat the remaining PR list
-  process_pr "$num" "$head" </dev/null || log "PR #$num failed; continuing"
+  process_pr "$num" "$head" "$base" </dev/null || log "PR #$num failed; continuing"
 done
