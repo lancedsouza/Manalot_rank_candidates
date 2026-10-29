@@ -16,13 +16,13 @@ Client->API.get_task_status(task_id) {
     }
     return "state, result, info"
   }
-  if(state == PENDING) {
+  if("state is PENDING, STARTED or RETRY") {
     @return API->Client: status Processing...
   }
   if(state == SUCCESS) {
     @return API->Client: status Completed, result
   }
-  // FAILURE (worker errors now propagate), plus STARTED and RETRY; error is str(task.info)
+  // FAILURE (worker errors propagate) or REVOKED; error is str(task.info)
   return "status Failed, error"
 }
 ```
