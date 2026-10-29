@@ -41,7 +41,7 @@ What it does: resumes (PDF, max 10 MB) are saved under unique sanitised names an
 Acceptance criteria: REQ-005 to REQ-010
 Diagram: [FLOW-02](flows/web/ingest-resumes-flow.md)
 Characterisation tests: tests/characterisation/test_ingest_resumes_*.py, test_section_extractor.py; fixes in tests/flow02/
-Known issues: ISS-22 (de-duplicated by name only; needs a schema decision), ISS-28 (resume data printed to stdout). Fixed: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
+Known issues: ISS-22 (de-duplicated by name only; owner chose email + phone, then email), ISS-28 (resume data printed to stdout). Fixed: ISS-01, ISS-21, ISS-23, ISS-24, ISS-25, ISS-26, ISS-27.
 
 ## FLOW-03 Score a candidate against a JD
 State: steady
@@ -57,7 +57,7 @@ What it does: lists top-N applications by hybrid score with badges (≥80 Top, �
 Acceptance criteria: REQ-013
 Diagram: [FLOW-04](flows/web/view-shortlist-flow.md)
 Characterisation tests: none yet — queries live inline in `streamlit_app.py` (needs pg + Playwright).
-Known issues: evidence threshold (0.72) differs from coverage threshold (0.75).
+Known issues: ISS-42 (unescaped names). Evidence threshold 0.72 vs coverage 0.75 is intended (owner, ISS-41).
 
 ## FLOW-05 Cache maintenance
 State: takeover
