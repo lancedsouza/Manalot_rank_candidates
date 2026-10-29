@@ -869,6 +869,7 @@ from app.services.jd_processor import process_pdf_jd
 from app.services.resume_processor import process_and_link_resume
 from app.utils.redis_config import redis_url
 from app.utils.cache_maintenance import clear_app_cache  # noqa: E402
+from app.utils.resume_cache import forget_cached_resumes  # noqa: E402
 from app.models.resume import Resume
 
 # Ensure tables exist, then add columns older databases lack
@@ -1053,6 +1054,8 @@ else:
             
             # Step 1: Send all PDFs to the FastAPI/Celery Cluster
             task_dict = {}
+            if force_refresh_toggle:
+                forget_cached_resumes([f.getvalue() for f in uploaded_resumes])  # ISS-52
             for idx, res_file in enumerate(uploaded_resumes):
                 status.text(f"Queueing {res_file.name} to AI Workers...")
                 files = {"file": (res_file.name, res_file.getvalue(), "application/pdf")}

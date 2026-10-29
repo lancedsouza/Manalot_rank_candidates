@@ -173,9 +173,23 @@ def generate_file_hash(pdf_path: Path) -> str:
     return hashlib.sha256(file_bytes).hexdigest()
 
 
-def generate_cache_key(pdf_path: Path) -> str:
-    file_hash = generate_file_hash(pdf_path)
+def cache_key_for_bytes(data: bytes) -> str:
+    file_hash = hashlib.sha256(data).hexdigest()
     return f"resume_extract:{file_hash}:{MODEL_VERSION}:{PROMPT_VERSION}"
+
+
+def generate_cache_key(pdf_path: Path) -> str:
+    return cache_key_for_bytes(pdf_path.read_bytes())
+
+
+def forget_cached_resumes(files: list[bytes]) -> None:
+    """Drop cached extractions so the worker re-parses these PDFs (ISS-52)."""
+    if not redis_client or not files:
+        return
+    try:
+        redis_client.delete(*(cache_key_for_bytes(data) for data in files))
+    except Exception:
+        logger.exception("Failed to clear cached resumes")
 
 
 def get_cached_resume(cache_key: str) -> Resume | None:
