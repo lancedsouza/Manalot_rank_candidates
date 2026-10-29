@@ -1,10 +1,13 @@
 # backend_api.py
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException
 from celery.result import AsyncResult
 from worker import process_resume_task
+from app.utils.api_key import require_api_key
 from app.utils.uploads import MAX_UPLOAD_BYTES, safe_upload_path
 
-app = FastAPI(title="Manalot Talent Scout API", version="1.0")
+# Every endpoint needs X-API-Key (ISS-61)
+app = FastAPI(title="Manalot Talent Scout API", version="1.0",
+              dependencies=[Depends(require_api_key)])
 
 @app.post("/api/v1/extract-resume/async")
 async def process_resume_async(file: UploadFile = File(...)):

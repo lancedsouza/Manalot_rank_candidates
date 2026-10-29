@@ -6,8 +6,14 @@ title FLOW-06 Poll task status
 @Control Celery as "Celery app (worker.py)"
 @Database Redis as "Redis result backend (REDIS_URL)"
 
-// `GET /api/v1/task/{task_id}`, polled every 2 s by FLOW-02 with no timeout; always HTTP 200
+// `GET /api/v1/task/{task_id}` with header X-API-Key, polled every 2 s by FLOW-02
 Client->API.get_task_status(task_id) {
+  if("MANALOT_API_KEY unset") {
+    @return API->Client: 503 API key not configured
+  }
+  if("X-API-Key missing or wrong") {
+    @return API->Client: 401 invalid or missing API key
+  }
   result = Celery.AsyncResult(task_id) {
     meta = Redis.get(celeryTaskMeta)
     if("no meta stored") {
